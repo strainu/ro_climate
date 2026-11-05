@@ -1,0 +1,4 @@
+zarr>=2.18,<3
+numpy>=1.23
+pandas>=2.0
+requests>=2.28
