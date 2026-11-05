@@ -48,6 +48,11 @@ class CacheKey:
     lat: float
 
     @property
+    def expected_columns(self) -> tuple[str, ...]:
+        """Return the data columns stored for this key."""
+        return self.variables
+
+    @property
     def digest(self) -> str:
         """Return a stable SHA-256 digest for this cache identity."""
         payload = json.dumps(
@@ -57,6 +62,52 @@ class CacheKey:
                 "i": self.i,
                 "j": self.j,
                 "variables": list(self.variables),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class AreaCacheKey:
+    """Identity of a cached area summary."""
+
+    store_url: str
+    i0: int
+    i1: int
+    j0: int
+    j1: int
+    variables: tuple[str, ...]
+    reductions: tuple[str, ...]
+    mask_digest: str = ""
+    min_count: int | None = 1
+
+    @property
+    def expected_columns(self) -> tuple[str, ...]:
+        """Return the ``{variable}_{reduction}`` columns for this key."""
+        return tuple(
+            f"{variable}_{reduction}"
+            for variable in self.variables
+            for reduction in self.reductions
+        )
+
+    @property
+    def digest(self) -> str:
+        """Return a stable SHA-256 digest for this area cache identity."""
+        payload = json.dumps(
+            {
+                "format_version": FORMAT_VERSION,
+                "kind": "area",
+                "store_url": self.store_url,
+                "i0": self.i0,
+                "i1": self.i1,
+                "j0": self.j0,
+                "j1": self.j1,
+                "variables": list(self.variables),
+                "reductions": list(self.reductions),
+                "mask_digest": self.mask_digest,
+                "min_count": self.min_count,
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -146,20 +197,27 @@ class RoClimateCache:
         )
         self.directory.mkdir(parents=True, exist_ok=True)
 
-    def path_for(self, key: CacheKey) -> Path:
+    def path_for(self, key: CacheKey | AreaCacheKey) -> Path:
         """Return the archive path for ``key``.
 
-        The filename contains the grid centre and a short digest so archives
-        are human-readable while still unique.
+        Point filenames contain the grid centre; area filenames contain their
+        grid window. Both end in a short digest so they remain unique and
+        human-readable.
         """
         var_part = "-".join(v.replace("_", "-") for v in key.variables)
+        if isinstance(key, AreaCacheKey):
+            red_part = "-".join(key.reductions)
+            return self.directory / (
+                f"ro_climate_area_i{key.i0}-{key.i1}_j{key.j0}-{key.j1}_"
+                f"{var_part}_{red_part}_{key.digest[:12]}.zip"
+            )
         return self.directory / (
             f"ro_climate_lat{key.lat:.4f}_lon{key.lon:.4f}_{var_part}_"
             f"{key.digest[:12]}.zip"
         )
 
-    def load(self, key: CacheKey) -> CachedPoint | None:
-        """Load a cached point, returning ``None`` on a miss or bad archive.
+    def load(self, key: CacheKey | AreaCacheKey) -> CachedPoint | None:
+        """Load a cached archive, returning ``None`` on a miss or bad archive.
 
         Invalid, corrupt, or incompatible archives are deleted so the next
         request can replace them.
@@ -172,9 +230,15 @@ class RoClimateCache:
                 metadata = json.loads(zf.read("metadata.json"))
                 if int(metadata.get("format_version", 0)) != FORMAT_VERSION:
                     raise ValueError("unsupported cache format")
+                kind = metadata.get("kind", "point")
+                if isinstance(key, AreaCacheKey):
+                    if kind != "area":
+                        raise ValueError("not an area archive")
+                elif kind != "point":
+                    raise ValueError("not a point archive")
                 columns = list(metadata.get("column_order", []))
-                if columns != list(key.variables):
-                    raise ValueError("cached variable set does not match key")
+                if columns != list(key.expected_columns):
+                    raise ValueError("cached columns do not match key")
                 values = np.load(
                     io.BytesIO(zf.read("data.npy")), allow_pickle=False
                 )
@@ -209,7 +273,12 @@ class RoClimateCache:
                 pass
             return None
 
-    def save(self, key: CacheKey, data: pd.DataFrame, metadata: dict) -> Path:
+    def save(
+        self,
+        key: CacheKey | AreaCacheKey,
+        data: pd.DataFrame,
+        metadata: dict,
+    ) -> Path:
         """Write ``data`` and ``metadata`` to the archive for ``key``."""
         return write_archive(self.path_for(key), data, metadata)
 
@@ -224,9 +293,15 @@ class RoClimateCache:
             row = {
                 "path": str(path),
                 "size_mb": round(path.stat().st_size / 1_000_000, 3),
+                "kind": "point",
                 "i": None,
                 "j": None,
+                "i0": None,
+                "i1": None,
+                "j0": None,
+                "j1": None,
                 "variables": None,
+                "reductions": None,
                 "start": None,
                 "end": None,
                 "retrieved_at": None,
@@ -234,18 +309,34 @@ class RoClimateCache:
             try:
                 with zipfile.ZipFile(path, "r") as zf:
                     meta = json.loads(zf.read("metadata.json"))
+                kind = meta.get("kind", "point")
                 grid = meta.get("grid", {})
                 actual = meta.get("actual", {})
                 row.update(
                     {
-                        "i": grid.get("i"),
-                        "j": grid.get("j"),
-                        "variables": ",".join(meta.get("column_order", [])),
+                        "kind": kind,
+                        "variables": ",".join(
+                            meta.get("variables", meta.get("column_order", []))
+                        ),
                         "start": actual.get("start"),
                         "end": actual.get("end"),
                         "retrieved_at": meta.get("retrieved_at"),
                     }
                 )
+                if kind == "area":
+                    row.update(
+                        {
+                            "i0": grid.get("i0"),
+                            "i1": grid.get("i1"),
+                            "j0": grid.get("j0"),
+                            "j1": grid.get("j1"),
+                            "reductions": ",".join(
+                                meta.get("reductions", [])
+                            ),
+                        }
+                    )
+                else:
+                    row.update({"i": grid.get("i"), "j": grid.get("j")})
             except (OSError, KeyError, ValueError, zipfile.BadZipFile):
                 row["variables"] = "<corrupt>"
             rows.append(row)
@@ -254,9 +345,15 @@ class RoClimateCache:
                 columns=[
                     "path",
                     "size_mb",
+                    "kind",
                     "i",
                     "j",
+                    "i0",
+                    "i1",
+                    "j0",
+                    "j1",
                     "variables",
+                    "reductions",
                     "start",
                     "end",
                     "retrieved_at",

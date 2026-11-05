@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import struct
 import time
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
@@ -14,10 +16,23 @@ import requests
 import zarr
 
 from . import grid
-from .cache import RoClimateCache, CacheKey, CachedPoint
+from ._chunk_cache import CachingRequestsStore, ChunkCache
+from .area import (
+    RoClimateArea,
+    column_name,
+    resolve_reductions,
+)
+from .cache import (
+    AreaCacheKey,
+    CacheKey,
+    CachedPoint,
+    RoClimateCache,
+    default_cache_dir,
+)
 from .exceptions import (
     CacheMissError,
     NoDataError,
+    NonAdditiveVariableError,
     StoreUnavailableError,
 )
 from ._store import RequestsStore
@@ -48,6 +63,179 @@ def _dedupe(items: Iterable[str]) -> list[str]:
     return result
 
 
+def _time_blocks(array, t0: int, t1: int):
+    """Yield chunk-aligned, clipped ``(start, stop)`` time slices."""
+
+    try:
+        chunk = int(array.chunks[0])
+    except (AttributeError, IndexError, TypeError):
+        chunk = t1 - t0 + 1
+    if chunk <= 0:
+        chunk = t1 - t0 + 1
+    start = (t0 // chunk) * chunk
+    while start <= t1:
+        yield max(start, t0), min(start + chunk, t1 + 1)
+        start += chunk
+
+
+def _spatial_chunks(
+    array,
+    i0: int,
+    i1: int,
+    j0: int,
+    j1: int,
+    mask: np.ndarray | None,
+):
+    """Yield chunk windows containing at least one selected cell.
+
+    Each item is ``(j_start, j_stop, i_start, i_stop, local_mask)``. A local
+    mask of ``None`` means the whole chunk window is selected.
+    """
+
+    try:
+        chunk_y = int(array.chunks[1])
+        chunk_x = int(array.chunks[2])
+    except (AttributeError, IndexError, TypeError):
+        chunk_y = j1 - j0 + 1
+        chunk_x = i1 - i0 + 1
+    if chunk_y <= 0:
+        chunk_y = j1 - j0 + 1
+    if chunk_x <= 0:
+        chunk_x = i1 - i0 + 1
+
+    for chunk_j in range(j0 // chunk_y, j1 // chunk_y + 1):
+        j_start = max(j0, chunk_j * chunk_y)
+        j_stop = min(j1 + 1, (chunk_j + 1) * chunk_y)
+        for chunk_i in range(i0 // chunk_x, i1 // chunk_x + 1):
+            i_start = max(i0, chunk_i * chunk_x)
+            i_stop = min(i1 + 1, (chunk_i + 1) * chunk_x)
+            if mask is None:
+                local_mask = None
+            else:
+                local_mask = mask[
+                    j_start - j0:j_stop - j0,
+                    i_start - i0:i_stop - i0,
+                ]
+                if not local_mask.any():
+                    continue
+            yield j_start, j_stop, i_start, i_stop, local_mask
+
+
+def _read_area_variable(
+    group,
+    variable: Variable,
+    t0: int,
+    t1: int,
+    i0: int,
+    i1: int,
+    j0: int,
+    j1: int,
+    mask: np.ndarray | None,
+    reductions: tuple[str, ...],
+    min_count: int | None,
+) -> tuple[dict[str, np.ndarray], np.ndarray]:
+    """Read one variable chunk-by-chunk and return daily spatial summaries."""
+
+    array = group[variable.name]
+    n_days = t1 - t0 + 1
+    count_total = np.zeros(n_days, dtype=np.int64)
+    need_sum = "mean" in reductions or "sum" in reductions
+    sum_total = (
+        np.zeros(n_days, dtype=np.float64) if need_sum else None
+    )
+    min_total = (
+        np.full(n_days, np.nan, dtype=np.float64)
+        if "min" in reductions
+        else None
+    )
+    max_total = (
+        np.full(n_days, np.nan, dtype=np.float64)
+        if "max" in reductions
+        else None
+    )
+
+    for j_start, j_stop, i_start, i_stop, local_mask in _spatial_chunks(
+        array, i0, i1, j0, j1, mask
+    ):
+        for start, stop in _time_blocks(array, t0, t1):
+            try:
+                slab = np.asarray(
+                    array[
+                        start:stop,
+                        j_start:j_stop,
+                        i_start:i_stop,
+                    ],
+                    dtype="float32",
+                )
+            except KeyError as exc:
+                raise NoDataError(
+                    f"missing Zarr chunk for {variable.name} at "
+                    f"{grid.index_to_date(start).date()}"
+                ) from exc
+            except Exception as exc:
+                raise StoreUnavailableError(
+                    f"cannot read {variable.name} for area "
+                    f"({i0}:{i1}, {j0}:{j1}): {exc}"
+                ) from exc
+            if slab.ndim != 3:
+                raise StoreUnavailableError(
+                    f"unexpected {variable.name} slab shape {slab.shape}"
+                )
+            if local_mask is None:
+                values = slab.reshape(slab.shape[0], -1)
+            else:
+                values = slab[:, local_mask]
+            counts = np.count_nonzero(
+                ~np.isnan(values), axis=1
+            ).astype(np.int64)
+            day_slice = slice(start - t0, stop - t0)
+            count_total[day_slice] += counts
+            if sum_total is not None:
+                sum_total[day_slice] += np.nansum(
+                    values, axis=1, dtype=np.float64
+                )
+            if min_total is not None:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", RuntimeWarning)
+                    day_min = np.nanmin(values, axis=1)
+                min_total[day_slice] = np.fmin(
+                    min_total[day_slice], day_min
+                )
+            if max_total is not None:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", RuntimeWarning)
+                    day_max = np.nanmax(values, axis=1)
+                max_total[day_slice] = np.fmax(
+                    max_total[day_slice], day_max
+                )
+
+    threshold = 1 if min_count is None else max(1, int(min_count))
+    valid = count_total >= threshold
+    output: dict[str, np.ndarray] = {}
+    if "mean" in reductions:
+        output["mean"] = np.divide(
+            sum_total,
+            count_total,
+            out=np.full(n_days, np.nan, dtype=np.float64),
+            where=valid,
+        ).astype("float32")
+    if "sum" in reductions:
+        output["sum"] = np.where(
+            valid, sum_total, np.nan
+        ).astype("float32")
+    if "min" in reductions:
+        output["min"] = np.where(
+            valid, min_total, np.nan
+        ).astype("float32")
+    if "max" in reductions:
+        output["max"] = np.where(
+            valid, max_total, np.nan
+        ).astype("float32")
+    if "count" in reductions:
+        output["count"] = count_total.astype("float32")
+    return output, count_total
+
+
 class RoClimate:
     """Client for the ANM daily gridded meteorological cube.
 
@@ -72,6 +260,8 @@ class RoClimate:
         cache: bool = True,
         cache_dir: str | Path | None = None,
         offline: bool = False,
+        chunk_cache: bool = False,
+        chunk_cache_max_mb: float | None = None,
         timeout: float = 30.0,
         retries: int = 3,
         frontier_ttl: int = 3600,
@@ -91,6 +281,12 @@ class RoClimate:
             Cache directory. Defaults to the platform cache directory.
         offline:
             Use only the local cache and never open the remote store.
+        chunk_cache:
+            Cache raw compressed Zarr chunks locally so overlapping point and
+            area requests can reuse them.
+        chunk_cache_max_mb:
+            Optional size limit for the chunk cache in megabytes. Oldest
+            chunks are evicted when the limit is exceeded.
         timeout:
             HTTP timeout in seconds.
         retries:
@@ -114,12 +310,35 @@ class RoClimate:
             else:
                 store_url = DEFAULT_STORE
         self.store_url = store_url.rstrip("/") + "/"
-        self._store = RequestsStore(
+        remote_store = RequestsStore(
             self.store_url,
             self._session,
             timeout=self.timeout,
             retries=retries,
         )
+        self._chunk_cache = None
+        if chunk_cache:
+            if cache_dir is not None:
+                chunk_root = Path(cache_dir).expanduser()
+            else:
+                base = default_cache_dir()
+                chunk_root = base.parent if base.name == "points" else base
+            max_bytes = (
+                int(float(chunk_cache_max_mb) * 1_000_000)
+                if chunk_cache_max_mb is not None
+                else None
+            )
+            self._chunk_cache = ChunkCache(
+                chunk_root / "chunks",
+                self.store_url,
+                DEFAULT_VARIABLES,
+                max_bytes=max_bytes,
+            )
+            self._store = CachingRequestsStore(
+                remote_store, self._chunk_cache
+            )
+        else:
+            self._store = remote_store
 
     # ------------------------------------------------------------------
     # Discovery and low-level access
@@ -345,6 +564,13 @@ class RoClimate:
         )
 
         group = self._open_group()
+        if refresh and self._chunk_cache is not None:
+            for var in selected:
+                try:
+                    chunk_size = int(group[var.name].chunks[0])
+                except (AttributeError, IndexError, TypeError):
+                    chunk_size = t1 - t0 + 1
+                self._chunk_cache.invalidate(var.name, t0, t1, chunk_size)
         columns: dict[str, pd.Series] = {}
         for var in selected:
             try:
@@ -442,6 +668,577 @@ class RoClimate:
             )
         return point
 
+    # ------------------------------------------------------------------
+    # Area loading
+    # ------------------------------------------------------------------
+    def area(
+        self,
+        bounds: tuple[float, float, float, float] | None = None,
+        start: grid.DateLike | None = None,
+        end: grid.DateLike | None = None,
+        variables: Iterable[str] | str | None = None,
+        reductions: Iterable[str] | str | None = None,
+        *,
+        polygon: Iterable[tuple[float, float]] | None = None,
+        min_count: int | None = 1,
+        allow_non_additive: bool = False,
+        cache: bool | None = None,
+        refresh: bool | None = None,
+        strict: bool = False,
+    ) -> RoClimateArea:
+        """Return daily spatial summaries for a grid window or polygon.
+
+        Parameters
+        ----------
+        bounds:
+            ``(west, south, east, north)`` window in WGS84 degrees. When
+            omitted, the polygon's bounding box is used.
+        start, end:
+            Optional inclusive date bounds. ``start`` defaults to 1961-01-01
+            and ``end`` defaults to the common frontier of the requested
+            variables.
+        variables:
+            Variable names to load. Defaults to all three variables.
+        reductions:
+            Spatial reductions to compute: ``mean``, ``min``, ``max``,
+            ``sum``, or ``count``. Defaults to ``("mean",)``.
+        polygon:
+            Optional simple polygon as ``(lon, lat)`` vertices. Cells whose
+            centres lie inside the polygon are selected.
+        min_count:
+            Minimum number of valid cells required for a non-count reduction.
+        allow_non_additive:
+            Permit spatial ``sum`` for temperature variables.
+        cache:
+            Override the client-level cache setting for this call.
+        refresh:
+            Ignore existing area and chunk caches for the requested range.
+        strict:
+            Raise :class:`NoDataError` when every summary value is invalid.
+
+        Returns
+        -------
+        RoClimateArea
+            The loaded daily spatial summaries.
+        """
+        selected = resolve_variables(variables)
+        selected = tuple(
+            sorted(
+                selected,
+                key=lambda item: DEFAULT_VARIABLES.index(item.name),
+            )
+        )
+        names = tuple(item.name for item in selected)
+        reductions = resolve_reductions(reductions)
+        if "sum" in reductions:
+            bad = [item.name for item in selected if not item.additive]
+            if bad and not allow_non_additive:
+                raise NonAdditiveVariableError(
+                    "sum is only meaningful for additive variables "
+                    f"({', '.join(bad)} cannot be summed); "
+                    "use mean/max/min or pass allow_non_additive=True"
+                )
+
+        if bounds is None and polygon is None:
+            raise ValueError("pass bounds and/or polygon to select an area")
+        warnings_list: list[str] = []
+        poly = grid.normalize_polygon(polygon) if polygon is not None else None
+        if bounds is None:
+            west, south, east, north = grid.polygon_bounds(poly)
+        else:
+            if len(bounds) != 4:
+                raise ValueError("bounds must contain four values")
+            west, south, east, north = (float(value) for value in bounds)
+            if poly is not None:
+                poly_west, poly_south, poly_east, poly_north = (
+                    grid.polygon_bounds(poly)
+                )
+                if (
+                    poly_west < west
+                    or poly_south < south
+                    or poly_east > east
+                    or poly_north > north
+                ):
+                    warnings_list.append(
+                        "polygon extends outside bounds; cells outside bounds "
+                        "were ignored"
+                    )
+
+        if (
+            west < grid.LON_MIN
+            or east > grid.LON_MAX
+            or south < grid.LAT_MIN
+            or north > grid.LAT_MAX
+        ):
+            warnings_list.append(
+                f"bounds clipped from ({west}, {south}, {east}, {north}) "
+                f"to the ANM grid"
+            )
+        i0, i1, j0, j1 = grid.bbox_to_index(west, south, east, north)
+        mask = (
+            grid.polygon_mask(poly, i0, i1, j0, j1)
+            if poly is not None
+            else None
+        )
+        if mask is not None and not mask.any():
+            raise NoDataError("polygon contains no grid cell centres")
+        n_cells = (
+            int(mask.sum())
+            if mask is not None
+            else (i1 - i0 + 1) * (j1 - j0 + 1)
+        )
+        min_count = 1 if min_count is None else int(min_count)
+        if min_count < 1:
+            raise ValueError("min_count must be at least 1")
+        if min_count > n_cells:
+            raise ValueError(
+                f"min_count {min_count} exceeds the {n_cells} "
+                "selected cells"
+            )
+        mask_digest = (
+            hashlib.sha256(np.packbits(mask).tobytes()).hexdigest()
+            if mask is not None
+            else ""
+        )
+
+        requested_start = (
+            grid.normalize_date(start)
+            if start is not None
+            else grid.TIME_ORIGIN
+        )
+        if requested_start < grid.TIME_ORIGIN:
+            warnings_list.append(
+                f"start clamped from {requested_start.date()} to "
+                f"{grid.TIME_ORIGIN.date()}"
+            )
+            requested_start = grid.TIME_ORIGIN
+        if requested_start > grid.TIME_END:
+            raise NoDataError(
+                f"start {requested_start.date()} is after the cube's last day "
+                f"{grid.TIME_END.date()}"
+            )
+        requested_end = grid.normalize_date(end) if end is not None else None
+
+        requested = {
+            "start": requested_start.strftime("%Y-%m-%d"),
+            "end": (
+                requested_end.strftime("%Y-%m-%d")
+                if requested_end is not None
+                else None
+            ),
+            "variables": list(names),
+            "reductions": list(reductions),
+            "bounds": [west, south, east, north],
+            "polygon": (
+                [list(point) for point in poly] if poly is not None else None
+            ),
+            "min_count": min_count,
+        }
+
+        cache_enabled = (
+            self._cache is not None if cache is None else bool(cache)
+        )
+        refresh = False if refresh is None else bool(refresh)
+        key = AreaCacheKey(
+            self.store_url,
+            i0,
+            i1,
+            j0,
+            j1,
+            names,
+            reductions,
+            mask_digest,
+            min_count,
+        )
+        cached: CachedPoint | None = None
+        if cache_enabled and self._cache is not None and not refresh:
+            cached = self._cache.load(key)
+
+        if self.offline:
+            if cached is None:
+                raise CacheMissError(
+                    "offline mode requested, but no cached area exists for "
+                    f"bounds {bounds} and variables {names}"
+                )
+            frontiers = {
+                name: pd.Timestamp(cached.metadata["frontiers"][name])
+                for name in names
+            }
+            target_end = min(frontiers.values())
+            if requested_end is not None:
+                target_end = min(requested_end, target_end)
+            if requested_start > target_end:
+                raise NoDataError(
+                    f"no data between {requested_start.date()} and "
+                    f"{target_end.date()}"
+                )
+            cached_start = pd.Timestamp(cached.metadata["actual"]["start"])
+            cached_end = pd.Timestamp(cached.metadata["actual"]["end"])
+            if cached_start > requested_start or cached_end < target_end:
+                raise CacheMissError(
+                    "offline mode requested, but the cached area does not "
+                    f"cover {requested_start.date()}..{target_end.date()}"
+                )
+            return self._area_from_cached(
+                cached,
+                bounds=(west, south, east, north),
+                i0=i0,
+                i1=i1,
+                j0=j0,
+                j1=j1,
+                poly=poly,
+                selected=selected,
+                reductions=reductions,
+                n_cells=n_cells,
+                start=requested_start,
+                end=target_end,
+                warnings=warnings_list,
+                frontiers=frontiers,
+                strict=strict,
+            )
+
+        all_frontiers = self.frontiers()
+        frontiers = {name: all_frontiers[name] for name in names}
+        target_end = min(frontiers.values())
+        if requested_end is not None:
+            target_end = min(requested_end, target_end)
+        if requested_start > target_end:
+            raise NoDataError(
+                f"no data between {requested_start.date()} and "
+                f"{target_end.date()}"
+            )
+        if requested_end is not None and requested_end > target_end:
+            warnings_list.append(
+                f"end clamped from {requested_end.date()} to "
+                f"{target_end.date()}"
+            )
+
+        if cached is not None:
+            cached_start = pd.Timestamp(cached.metadata["actual"]["start"])
+            cached_end = pd.Timestamp(cached.metadata["actual"]["end"])
+            if cached_start <= requested_start and cached_end >= target_end:
+                return self._area_from_cached(
+                    cached,
+                    bounds=(west, south, east, north),
+                    i0=i0,
+                    i1=i1,
+                    j0=j0,
+                    j1=j1,
+                    poly=poly,
+                    selected=selected,
+                    reductions=reductions,
+                    n_cells=n_cells,
+                    start=requested_start,
+                    end=target_end,
+                    warnings=warnings_list,
+                    frontiers=frontiers,
+                    strict=strict,
+                )
+
+        group = self._open_group()
+        segments: list[tuple[pd.Timestamp, pd.Timestamp]] = []
+        if cached is None:
+            segments.append((requested_start, target_end))
+        else:
+            cached_start = pd.Timestamp(cached.metadata["actual"]["start"])
+            cached_end = pd.Timestamp(cached.metadata["actual"]["end"])
+            if requested_start < cached_start:
+                segment_end = min(
+                    cached_start - pd.Timedelta(days=1), target_end
+                )
+                if requested_start <= segment_end:
+                    segments.append((requested_start, segment_end))
+            if target_end > cached_end:
+                segment_start = max(
+                    cached_end + pd.Timedelta(days=1), requested_start
+                )
+                if segment_start <= target_end:
+                    segments.append((segment_start, target_end))
+
+        frames: list[pd.DataFrame] = []
+        new_coverage: dict[str, dict] = {}
+        if cached is not None:
+            frames.append(cached.data)
+            new_coverage.update(cached.metadata.get("coverage", {}))
+        for segment_start, segment_end in segments:
+            frame, coverage = self._fetch_area_segment(
+                group,
+                selected,
+                reductions,
+                segment_start,
+                segment_end,
+                i0,
+                i1,
+                j0,
+                j1,
+                mask,
+                n_cells,
+                min_count,
+                refresh,
+            )
+            frames.append(frame)
+            for name, row in coverage.items():
+                if name in new_coverage:
+                    old_valid = new_coverage[name].get("n_valid")
+                    if old_valid is None:
+                        new_coverage[name]["n_valid"] = None
+                    else:
+                        new_coverage[name]["n_valid"] = (
+                            old_valid + row["n_valid"]
+                        )
+                    new_coverage[name]["n_days"] = None
+                    new_coverage[name]["n_cell_days"] = None
+                    new_coverage[name]["valid_fraction"] = None
+                else:
+                    new_coverage[name] = dict(row)
+
+        columns = [
+            column_name(item.name, reduction)
+            for item in selected
+            for reduction in reductions
+        ]
+        full_data = pd.concat(frames).sort_index()
+        full_data = full_data[~full_data.index.duplicated(keep="last")]
+        full_data = full_data[columns]
+
+        coverage = self._coverage_frame(
+            new_coverage, selected, n_cells, len(full_data)
+        )
+        retrieved_at = datetime.now(timezone.utc).isoformat()
+        full_area = RoClimateArea(
+            bounds=(west, south, east, north),
+            i0=i0,
+            i1=i1,
+            j0=j0,
+            j1=j1,
+            data=full_data,
+            variables=selected,
+            reductions=reductions,
+            frontiers=frontiers,
+            store_url=self.store_url,
+            item_url=ITEM_URL,
+            polygon=poly,
+            n_cells=n_cells,
+            coverage=coverage,
+            warnings=_dedupe(
+                list(cached.metadata.get("warnings", []))
+                if cached is not None
+                else []
+            )
+            + warnings_list,
+            from_cache=False,
+            retrieved_at=retrieved_at,
+            requested=requested,
+        )
+        cache_path = None
+        if cache_enabled and self._cache is not None:
+            cache_path = self._cache.save(
+                key, full_data, full_area.metadata()
+            )
+
+        sliced = full_data.loc[requested_start:target_end, columns]
+        if sliced.empty:
+            raise NoDataError(
+                f"no data between {requested_start.date()} and "
+                f"{target_end.date()}"
+            )
+        sliced_coverage = (
+            coverage if sliced.index.equals(full_data.index) else None
+        )
+        area = RoClimateArea(
+            bounds=(west, south, east, north),
+            i0=i0,
+            i1=i1,
+            j0=j0,
+            j1=j1,
+            data=sliced.copy(),
+            variables=selected,
+            reductions=reductions,
+            frontiers=frontiers,
+            store_url=self.store_url,
+            item_url=ITEM_URL,
+            polygon=poly,
+            n_cells=n_cells,
+            coverage=sliced_coverage,
+            warnings=full_area.warnings,
+            from_cache=False,
+            cache_path=cache_path,
+            retrieved_at=retrieved_at,
+            requested=requested,
+        )
+        if strict and not area.is_covered:
+            raise NoDataError(
+                f"the selected area has no valid data between "
+                f"{requested_start.date()} and {target_end.date()}"
+            )
+        return area
+
+    def _fetch_area_segment(
+        self,
+        group,
+        selected: tuple[Variable, ...],
+        reductions: tuple[str, ...],
+        start: pd.Timestamp,
+        end: pd.Timestamp,
+        i0: int,
+        i1: int,
+        j0: int,
+        j1: int,
+        mask: np.ndarray | None,
+        n_cells: int,
+        min_count: int | None,
+        refresh_chunks: bool,
+    ) -> tuple[pd.DataFrame, dict[str, dict]]:
+        """Fetch one date segment and return summaries plus coverage rows."""
+
+        t0 = grid.date_to_index(start)
+        t1 = grid.date_to_index(end)
+        dates = pd.date_range(
+            grid.index_to_date(t0), grid.index_to_date(t1), freq="D"
+        )
+        frame_columns: dict[str, np.ndarray] = {}
+        coverage: dict[str, dict] = {}
+        for variable in selected:
+            if refresh_chunks and self._chunk_cache is not None:
+                try:
+                    chunk_size = int(group[variable.name].chunks[0])
+                except (AttributeError, IndexError, TypeError):
+                    chunk_size = t1 - t0 + 1
+                self._chunk_cache.invalidate(
+                    variable.name, t0, t1, chunk_size
+                )
+            summaries, counts = _read_area_variable(
+                group,
+                variable,
+                t0,
+                t1,
+                i0,
+                i1,
+                j0,
+                j1,
+                mask,
+                reductions,
+                min_count,
+            )
+            for reduction in reductions:
+                frame_columns[
+                    column_name(variable.name, reduction)
+                ] = summaries[reduction]
+            n_valid = int(counts.sum())
+            n_cell_days = n_cells * len(dates)
+            coverage[variable.name] = {
+                "variable": variable.name,
+                "n_cells": n_cells,
+                "n_days": len(dates),
+                "n_cell_days": n_cell_days,
+                "n_valid": n_valid,
+                "valid_fraction": (
+                    n_valid / n_cell_days if n_cell_days else np.nan
+                ),
+            }
+        frame = pd.DataFrame(frame_columns, index=dates)
+        return frame, coverage
+
+    def _area_from_cached(
+        self,
+        cached: CachedPoint,
+        *,
+        bounds: tuple[float, float, float, float],
+        i0: int,
+        i1: int,
+        j0: int,
+        j1: int,
+        poly: tuple[tuple[float, float], ...] | None,
+        selected: tuple[Variable, ...],
+        reductions: tuple[str, ...],
+        n_cells: int,
+        start: pd.Timestamp,
+        end: pd.Timestamp,
+        warnings: list[str],
+        frontiers: dict[str, pd.Timestamp],
+        strict: bool,
+    ) -> RoClimateArea:
+        """Build an area from a cached archive slice."""
+
+        meta = cached.metadata
+        columns = [
+            column_name(item.name, reduction)
+            for item in selected
+            for reduction in reductions
+        ]
+        data = cached.data.loc[start:end, columns]
+        if data.empty:
+            raise NoDataError(
+                f"no cached data between {start.date()} and {end.date()}"
+            )
+        coverage_rows = meta.get("coverage", {})
+        if not data.index.equals(cached.data.index):
+            coverage_rows = {}
+        coverage = self._coverage_frame(
+            coverage_rows, selected, n_cells, len(data)
+        )
+        area = RoClimateArea(
+            bounds=bounds,
+            i0=i0,
+            i1=i1,
+            j0=j0,
+            j1=j1,
+            data=data.copy(),
+            variables=selected,
+            reductions=reductions,
+            frontiers=frontiers,
+            store_url=str(meta.get("store_url", self.store_url)),
+            item_url=meta.get("item_url"),
+            polygon=poly,
+            n_cells=n_cells,
+            coverage=coverage,
+            warnings=_dedupe(
+                list(meta.get("warnings", [])) + list(warnings)
+            ),
+            from_cache=True,
+            cache_path=cached.path,
+            retrieved_at=meta.get("retrieved_at"),
+            requested=meta.get("requested"),
+        )
+        if strict and not area.is_covered:
+            raise NoDataError(
+                f"the selected area has no valid data between "
+                f"{start.date()} and {end.date()}"
+            )
+        return area
+
+    @staticmethod
+    def _coverage_frame(
+        coverage: dict[str, dict],
+        selected: tuple[Variable, ...],
+        n_cells: int,
+        n_days: int,
+    ) -> pd.DataFrame:
+        """Return a normalised coverage table for the selected variables."""
+
+        rows = []
+        for variable in selected:
+            row = coverage.get(variable.name, {})
+            n_valid = row.get("n_valid")
+            if n_valid is None:
+                n_valid = np.nan
+            n_cell_days = n_cells * n_days
+            rows.append(
+                {
+                    "variable": variable.name,
+                    "n_cells": n_cells,
+                    "n_days": n_days,
+                    "n_cell_days": n_cell_days,
+                    "n_valid": n_valid,
+                    "valid_fraction": (
+                        n_valid / n_cell_days
+                        if n_cell_days and not pd.isna(n_valid)
+                        else np.nan
+                    ),
+                }
+            )
+        return pd.DataFrame(rows).set_index("variable")
+
     def _point_from_cached(
         self,
         cached: CachedPoint,
@@ -500,22 +1297,42 @@ class RoClimate:
     # Cache management
     # ------------------------------------------------------------------
     def cache_info(self) -> pd.DataFrame:
-        """Return a table describing cached point archives."""
+        """Return a table describing cached point and area archives."""
         if self._cache is None:
             return pd.DataFrame()
         return self._cache.info()
 
+    def chunk_cache_info(self) -> pd.DataFrame:
+        """Return a per-variable summary of the raw chunk cache."""
+        if self._chunk_cache is None:
+            return pd.DataFrame(
+                columns=[
+                    "variable",
+                    "chunks",
+                    "size_mb",
+                    "oldest",
+                    "newest",
+                ]
+            )
+        return self._chunk_cache.info()
+
     def clear_cache(self) -> int:
-        """Delete every cached archive and return the number removed."""
-        if self._cache is None:
-            return 0
-        return self._cache.clear()
+        """Delete every cached archive and chunk, returning the count."""
+        removed = self._cache.clear() if self._cache is not None else 0
+        if self._chunk_cache is not None:
+            removed += self._chunk_cache.clear()
+        return removed
 
     def prune_cache(self, older_than_days: int = 30) -> int:
-        """Delete cached archives older than ``older_than_days``."""
-        if self._cache is None:
-            return 0
-        return self._cache.prune(older_than_days)
+        """Delete cached archives and chunks older than ``older_than_days``."""
+        removed = (
+            self._cache.prune(older_than_days)
+            if self._cache is not None
+            else 0
+        )
+        if self._chunk_cache is not None:
+            removed += self._chunk_cache.prune(older_than_days)
+        return removed
 
     # ------------------------------------------------------------------
     # Lifecycle

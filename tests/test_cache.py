@@ -8,6 +8,7 @@ import pytest
 
 from ro_climate.cache import (
     RoClimateCache,
+    AreaCacheKey,
     CacheKey,
     FORMAT_VERSION,
     default_cache_dir,
@@ -210,3 +211,148 @@ def test_cache_path_uses_grid_centre(tmp_path):
         "ro_climate_lat44.4350_lon26.1050_max-temp-precipitation_"
     )
     assert path.name.endswith(f"{key.digest[:12]}.zip")
+
+
+def make_area_frame() -> pd.DataFrame:
+    index = pd.date_range("2020-01-01", periods=4, freq="D")
+    return pd.DataFrame(
+        {
+            "max_temp_mean": np.array([1.0, 2.0, 3.0, 4.0], dtype="float32"),
+            "max_temp_max": np.array([2.0, 3.0, 4.0, 5.0], dtype="float32"),
+        },
+        index=index,
+    )
+
+
+def make_area_metadata() -> dict:
+    return {
+        "kind": "area",
+        "grid": {"i0": 597, "i1": 600, "j0": 392, "j1": 394},
+        "actual": {"start": "2020-01-01", "end": "2020-01-04"},
+        "column_order": ["max_temp_mean", "max_temp_max"],
+        "variables": ["max_temp"],
+        "reductions": ["mean", "max"],
+        "store_url": "https://example.invalid/store/",
+    }
+
+
+def make_area_key() -> AreaCacheKey:
+    return AreaCacheKey(
+        store_url="https://example.invalid/store/",
+        i0=597,
+        i1=600,
+        j0=392,
+        j1=394,
+        variables=("max_temp",),
+        reductions=("mean", "max"),
+        mask_digest="",
+        min_count=1,
+    )
+
+
+def test_area_cache_key_columns_and_digest():
+    key = make_area_key()
+    assert key.expected_columns == ("max_temp_mean", "max_temp_max")
+
+    other = AreaCacheKey(
+        store_url=key.store_url,
+        i0=key.i0,
+        i1=key.i1,
+        j0=key.j0,
+        j1=key.j1,
+        variables=key.variables,
+        reductions=key.reductions,
+        mask_digest="abc",
+        min_count=key.min_count,
+    )
+    assert key.digest != other.digest
+
+    other = AreaCacheKey(
+        store_url=key.store_url,
+        i0=key.i0,
+        i1=key.i1,
+        j0=key.j0,
+        j1=key.j1,
+        variables=key.variables,
+        reductions=key.reductions,
+        mask_digest=key.mask_digest,
+        min_count=2,
+    )
+    assert key.digest != other.digest
+
+    other = AreaCacheKey(
+        store_url=key.store_url,
+        i0=key.i0,
+        i1=key.i1,
+        j0=key.j0,
+        j1=key.j1,
+        variables=key.variables,
+        reductions=("mean",),
+        mask_digest=key.mask_digest,
+        min_count=key.min_count,
+    )
+    assert key.digest != other.digest
+
+
+def test_area_cache_path_and_roundtrip(tmp_path):
+    cache = RoClimateCache(tmp_path)
+    key = make_area_key()
+    frame = make_area_frame()
+
+    path = cache.save(key, frame, make_area_metadata())
+    assert path == cache.path_for(key)
+    assert path.name.startswith("ro_climate_area_i597-600_j392-394_")
+    assert path.name.endswith(f"{key.digest[:12]}.zip")
+
+    cached = cache.load(key)
+    assert cached is not None
+    assert cached.path == path
+    pd.testing.assert_frame_equal(cached.data, frame)
+    assert cached.metadata["kind"] == "area"
+
+
+def test_area_cache_rejects_point_archive(tmp_path):
+    cache = RoClimateCache(tmp_path)
+    key = make_area_key()
+    metadata = make_area_metadata()
+    metadata["kind"] = "point"
+    path = write_archive(cache.path_for(key), make_area_frame(), metadata)
+
+    assert cache.load(key) is None
+    assert not path.exists()
+
+
+def test_point_cache_rejects_area_archive(tmp_path):
+    cache = RoClimateCache(tmp_path)
+    key = make_key()
+    metadata = make_metadata()
+    metadata["kind"] = "area"
+    path = write_archive(cache.path_for(key), make_frame(), metadata)
+
+    assert cache.load(key) is None
+    assert not path.exists()
+
+
+def test_area_cache_info(tmp_path):
+    cache = RoClimateCache(tmp_path)
+    cache.save(make_area_key(), make_area_frame(), make_area_metadata())
+    cache.save(make_key(), make_frame(), make_metadata())
+
+    info = cache.info()
+    assert len(info) == 2
+    area_row = info[info["kind"] == "area"].iloc[0]
+    assert area_row["i0"] == 597
+    assert area_row["i1"] == 600
+    assert area_row["j0"] == 392
+    assert area_row["j1"] == 394
+    assert area_row["variables"] == "max_temp"
+    assert area_row["reductions"] == "mean,max"
+    assert area_row["start"] == "2020-01-01"
+    assert area_row["end"] == "2020-01-04"
+
+    point_row = info[info["kind"] == "point"].iloc[0]
+    assert point_row["i"] == 597
+    assert point_row["j"] == 392
+    assert point_row["reductions"] is None or pd.isna(
+        point_row["reductions"]
+    )

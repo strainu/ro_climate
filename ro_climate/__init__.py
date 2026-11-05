@@ -13,6 +13,7 @@ Quick start::
         p.to_csv("bucharest_2020.csv")
 """
 
+from .area import RoClimateArea
 from .client import RoClimate, DEFAULT_STORE, ITEM_URL
 from .exceptions import (
     RoClimateError,
@@ -42,6 +43,7 @@ __version__ = "0.1.0"
 __all__ = [
     "RoClimate",
     "RoClimatePoint",
+    "RoClimateArea",
     "Variable",
     "VARIABLES",
     "DEFAULT_VARIABLES",

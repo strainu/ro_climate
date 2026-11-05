@@ -3,8 +3,8 @@
 ## Project scope
 
 `ro-climate` (import name `ro_climate`) is a standalone Python library for
-point time series from the public **ANM daily gridded meteorological cube**
-for Romania.
+point time series and area summaries from the public **ANM daily gridded
+meteorological cube** for Romania.
 
 Work only inside this `meteo/` directory. Do not navigate to, import from, or
 depend on the parent `pywikibot` checkout.
@@ -13,8 +13,8 @@ depend on the parent `pywikibot` checkout.
 
 - Distribution: `ro-climate`
 - Package/import: `ro_climate`
-- Public classes: `RoClimate`, `RoClimatePoint`, `RoClimateCache`,
-  `RoClimateError`
+- Public classes: `RoClimate`, `RoClimatePoint`, `RoClimateArea`,
+  `RoClimateCache`, `RoClimateError`
 
 ## Setup and verification
 
@@ -50,11 +50,14 @@ Tests must pass without network access.
 
 | Path | Responsibility |
 | --- | --- |
-| `ro_climate/client.py` | `RoClimate`: STAC discovery, Zarr access, frontiers, point loading, cache orchestration |
+| `ro_climate/client.py` | `RoClimate`: STAC discovery, Zarr access, frontiers, point/area loading, cache orchestration |
 | `ro_climate/point.py` | `RoClimatePoint`: data access, statistics, resampling, indices, exports |
-| `ro_climate/cache.py` | `RoClimateCache`, `CacheKey`, zip archive read/write |
+| `ro_climate/area.py` | `RoClimateArea`: spatial-reduction summaries, statistics, aggregation, exports |
+| `ro_climate/cache.py` | `RoClimateCache`, `CacheKey`, `AreaCacheKey`, zip archive read/write |
+| `ro_climate/_chunk_cache.py` | Private raw Zarr chunk cache and caching store wrapper |
+| `ro_climate/_reduce.py` | Shared temporal reduction helpers |
 | `ro_climate/_store.py` | Private read-only `RequestsStore` for Zarr v2 over HTTP |
-| `ro_climate/grid.py` | 0.01° grid mapping, date conversion, season helpers |
+| `ro_climate/grid.py` | 0.01° grid mapping, bbox/polygon helpers, date conversion, season helpers |
 | `ro_climate/variables.py` | Variable metadata, default order, attribution |
 | `ro_climate/indices.py` | Pure helpers for climate-index calculations |
 | `ro_climate/exceptions.py` | Exception hierarchy rooted at `RoClimateError` |
@@ -87,15 +90,37 @@ Tests must pass without network access.
 - `sum()` and `resample(..., how="sum")` are only valid for additive variables
   (precipitation). Temperature raises `NonAdditiveVariableError` unless
   `allow_non_additive=True` is passed to `sum()`.
-- The cache key is `(store_url, i, j, variable set)`. One zip archive per key;
-  the requested date range lives in metadata. A wider later request extends the
-  archive, and a covered request is served without re-downloading chunks.
+- `area(bounds=(west, south, east, north), ..., polygon=...)` returns a
+  `RoClimateArea` with daily spatial summaries, not raw grids. When `bounds` is
+  omitted, the polygon bounding box is used; a supplied polygon masks cells
+  inside that window.
+- Spatial reductions are `mean` (default), `min`, `max`, `sum`, and `count`.
+  Columns are `{variable}_{reduction}`. `min_count` defaults to 1 and applies to
+  non-count reductions. Spatial `sum` is limited to additive variables unless
+  `allow_non_additive=True`.
+- Polygon selection uses cell centres and one simple ring; holes,
+  multipolygons, and exact area weighting are not supported.
+- Area downloads are chunk-granular: only chunks containing at least one
+  selected cell are read. Time reads are aligned to Zarr time chunks.
+- Bounds outside the grid are clipped with an `RoClimateArea.warnings` entry;
+  an `end` beyond the frontier is clamped with a warning.
+- The point cache key is `(store_url, i, j, variable set)`. One zip archive per
+  key; the requested date range lives in metadata. A wider later request extends
+  the archive, and a covered request is served without re-downloading chunks.
+- The area cache key is `(store_url, i0, i1, j0, j1, variables, reductions,
+  polygon-mask digest, min_count)`. Area archives store daily summaries, not
+  raw grids, and use the prefix `ro_climate_area_...`.
 - Cache archive contents: `data.npy`, `dates.npy`, `metadata.json`,
   `README.txt`. Writes must remain atomic.
-- Cache directory override: `RO_CLIMATE_CACHE_DIR`. Archive prefix:
+- Cache directory override: `RO_CLIMATE_CACHE_DIR`. Point archive prefix:
   `ro_climate_lat...`.
-- Offline mode reads only the local cache and raises `CacheMissError` when no
-  covering archive exists.
+- The optional raw chunk cache lives under `<cache root>/chunks/<store digest>/`
+  and is keyed by store/variable/time/y/x. `chunk_cache_max_mb` evicts the
+  oldest chunks. `cache_info()` lists archives, `chunk_cache_info()` lists raw
+  chunks, and `clear_cache()`/`prune_cache()` cover both.
+- Offline mode reads only the local summary cache and raises `CacheMissError`
+  when no covering archive exists. Partial raw chunk sets are not used for
+  offline area reads.
 
 ## Data source facts
 
@@ -114,6 +139,10 @@ Tests must pass without network access.
   the network.
 - Add or update tests for every behavior change.
 - Use `tmp_path` for cache and export tests.
+- Area tests use a fake 3-D array with small chunks to verify chunk pruning and
+  spatial reductions without network access.
+- Chunk-cache tests exercise path naming, invalidation, eviction, and the
+  caching store wrapper.
 - The store tests monkeypatch `ro_climate._store.time.sleep`; keep retry tests
   fast and deterministic.
 - Do not replace tests with live downloads. Live smoke tests are optional and
@@ -134,4 +163,8 @@ Tests must pass without network access.
 - Do not mix variable frontiers when multiple variables are requested.
 - Do not change the cache key without considering old archives and
   `FORMAT_VERSION`.
+- Select polygon cells by their centres; do not treat polygon vertices as grid
+  indices or add exact-area weighting without changing the documented contract.
+- Keep chunk-cache file names (`<time>.<y>.<x>` bucketed by `time // 1000`) and
+  `ChunkCache.invalidate` aligned.
 - Keep the distinction: `ro_climate` is the library; `ANM` is the dataset.

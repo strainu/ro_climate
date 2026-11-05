@@ -133,3 +133,130 @@ def season_year_index(index: pd.DatetimeIndex) -> pd.Index:
     years = index.year.to_numpy(copy=True)
     years[index.month == 12] += 1
     return pd.Index(years, name="season_year")
+
+
+def normalize_polygon(
+    polygon: Iterable[tuple[float, float]],
+) -> tuple[tuple[float, float], ...]:
+    """Validate a polygon and return its vertices as ``(lon, lat)`` tuples.
+
+    A duplicated closing vertex is removed. The polygon must contain at least
+    three distinct finite vertices. Self-intersecting rings are not validated
+    and should be avoided by callers.
+    """
+
+    points = [(float(lon), float(lat)) for lon, lat in polygon]
+    if len(points) < 3:
+        raise ValueError("polygon must contain at least three vertices")
+    for lon, lat in points:
+        if not np.isfinite(lon) or not np.isfinite(lat):
+            raise ValueError("polygon coordinates must be finite")
+    if points[0] == points[-1]:
+        points = points[:-1]
+    if len(points) < 3:
+        raise ValueError(
+            "polygon must contain at least three distinct vertices"
+        )
+    return tuple(points)
+
+
+def polygon_bounds(
+    polygon: Iterable[tuple[float, float]],
+) -> tuple[float, float, float, float]:
+    """Return ``(west, south, east, north)`` for a polygon."""
+
+    points = normalize_polygon(polygon)
+    lons = [point[0] for point in points]
+    lats = [point[1] for point in points]
+    return min(lons), min(lats), max(lons), max(lats)
+
+
+def bbox_to_index(
+    west: float,
+    south: float,
+    east: float,
+    north: float,
+) -> tuple[int, int, int, int]:
+    """Return inclusive ``(i0, i1, j0, j1)`` indices for cell centres.
+
+    The window is clipped to the grid. If it is narrower than one cell, the
+    cell containing the window midpoint is returned. A window that does not
+    overlap the grid raises :class:`OutsideGridError`.
+    """
+
+    values = (west, south, east, north)
+    if not all(np.isfinite(float(value)) for value in values):
+        raise OutsideGridError("bounds must be finite numbers")
+    west, south, east, north = (float(value) for value in values)
+    if west >= east or south >= north:
+        raise ValueError("bounds must satisfy west < east and south < north")
+    if (
+        east < LON_MIN
+        or west > LON_MAX
+        or north < LAT_MIN
+        or south > LAT_MAX
+    ):
+        raise OutsideGridError(
+            f"bounds [{west}, {south}, {east}, {north}] do not overlap "
+            f"the ANM grid [{LON_MIN}, {LAT_MIN}, {LON_MAX}, {LAT_MAX}]"
+        )
+
+    west = max(west, LON_MIN)
+    east = min(east, LON_MAX)
+    south = max(south, LAT_MIN)
+    north = min(north, LAT_MAX)
+
+    # Cell centres are X_MIN + i * STEP and Y_MAX - j * STEP.
+    eps = 1e-9
+    i0 = int(np.ceil((west - X_MIN) / STEP - eps))
+    i1 = int(np.floor((east - X_MIN) / STEP + eps))
+    j0 = int(np.ceil((Y_MAX - north) / STEP - eps))
+    j1 = int(np.floor((Y_MAX - south) / STEP + eps))
+
+    if i0 > i1 or j0 > j1:
+        mid_i, mid_j = lonlat_to_index(
+            (west + east) / 2.0, (south + north) / 2.0
+        )
+        if i0 > i1:
+            i0 = i1 = mid_i
+        if j0 > j1:
+            j0 = j1 = mid_j
+
+    i0 = min(max(i0, 0), N_X - 1)
+    i1 = min(max(i1, 0), N_X - 1)
+    j0 = min(max(j0, 0), N_Y - 1)
+    j1 = min(max(j1, 0), N_Y - 1)
+    return i0, i1, j0, j1
+
+
+def polygon_mask(
+    polygon: Iterable[tuple[float, float]],
+    i0: int,
+    i1: int,
+    j0: int,
+    j1: int,
+) -> np.ndarray:
+    """Return a boolean mask of cell centres inside ``polygon``.
+
+    The returned array has shape ``(j1 - j0 + 1, i1 - i0 + 1)``. The polygon
+    is treated as a single simple ring; holes and multipart polygons are not
+    supported by this helper.
+    """
+
+    points = normalize_polygon(polygon)
+    if i0 > i1 or j0 > j1:
+        raise ValueError("invalid grid window")
+
+    lon = X_MIN + STEP * np.arange(i0, i1 + 1, dtype=float)
+    lat = Y_MAX - STEP * np.arange(j0, j1 + 1, dtype=float)
+    lon_grid, lat_grid = np.meshgrid(lon, lat)
+    inside = np.zeros(lon_grid.shape, dtype=bool)
+
+    x1, y1 = points[-1]
+    for x2, y2 in points:
+        crosses = (y1 > lat_grid) != (y2 > lat_grid)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            x_cross = (x2 - x1) * (lat_grid - y1) / (y2 - y1) + x1
+        inside ^= crosses & (lon_grid < x_cross)
+        x1, y1 = x2, y2
+    return inside

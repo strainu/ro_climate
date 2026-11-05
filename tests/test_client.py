@@ -270,3 +270,34 @@ def test_frontiers_reads_scalar_arrays(tmp_path):
     result = client.frontiers(force=True)
     assert result == FRONTIERS
     client.close()
+
+
+def test_chunk_cache_wiring_and_clear(tmp_path):
+    client = RoClimate(
+        store_url="https://example.invalid/store/",
+        discover=False,
+        cache=True,
+        cache_dir=tmp_path,
+        chunk_cache=True,
+    )
+    assert client.chunk_cache_info().empty
+    client._chunk_cache.put("max_temp/0.0.0", b"x" * 2000)
+    info = client.chunk_cache_info()
+    assert len(info) == 1
+    assert info.iloc[0]["variable"] == "max_temp"
+    assert client.clear_cache() == 1
+    assert client.chunk_cache_info().empty
+    client.close()
+
+
+def test_chunk_cache_disabled_info_is_empty(tmp_path):
+    client = make_client(tmp_path)
+    assert client.chunk_cache_info().empty
+    assert list(client.chunk_cache_info().columns) == [
+        "variable",
+        "chunks",
+        "size_mb",
+        "oldest",
+        "newest",
+    ]
+    client.close()
