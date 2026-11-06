@@ -114,6 +114,12 @@ Tests must pass without network access.
   `clear_cache()`/`prune_cache()` manage them.
 - `point(refresh=True)` and `area(refresh=True)` invalidate cached chunks
   covering the requested range.
+- Point and area objects expose climate-description helpers:
+  `extreme_dates`, `annual_mean_temperature`, `monthly_mean_temperature`,
+  `warmest_month`, `coldest_month`, `wettest_year`, `driest_year`, and
+  `precipitation_summary`. The area object also has `tmean`,
+  `mean_temperature`, and `annual_extremes`. These operate on the daily
+  point/summary series; they do not compute per-cell spatial ranges.
 - Export archives (`to_zip`) contain `data.npy`, `dates.npy`,
   `metadata.json`, `README.txt`. Writes must remain atomic.
 - Cache directory override: `RO_CLIMATE_CACHE_DIR`.

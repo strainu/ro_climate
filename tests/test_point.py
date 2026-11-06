@@ -109,6 +109,75 @@ def test_derived(point):
     )
 
 
+def test_extreme_dates(point):
+    result = point.extreme_dates(["max_temp", "min_temp"])
+    assert result.index.tolist() == ["max_temp", "min_temp"]
+    for name in ("max_temp", "min_temp"):
+        series = point.data[name]
+        row = result.loc[name]
+        assert row["min"] == pytest.approx(series.min())
+        assert row["max"] == pytest.approx(series.max())
+        assert row["min_date"] == series.idxmin()
+        assert row["max_date"] == series.idxmax()
+
+
+def test_temperature_summary(point):
+    annual = point.annual_mean_temperature()
+    assert annual.index.tolist() == [pd.Timestamp("2020-01-01")]
+    assert annual.iloc[0] == pytest.approx(point.tmean.mean())
+
+    monthly = point.monthly_mean_temperature()
+    assert monthly.index.tolist() == list(range(1, 13))
+    assert monthly.loc[7] == pytest.approx(
+        point.tmean[point.tmean.index.month == 7].mean()
+    )
+    assert point.warmest_month() == pytest.approx(
+        (monthly.idxmax(), monthly.max())
+    )
+    assert point.coldest_month() == pytest.approx(
+        (monthly.idxmin(), monthly.min())
+    )
+
+
+def test_precipitation_extremes():
+    frames = []
+    for year, fill in ((2020, 1.0), (2021, 2.0)):
+        index = pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D")
+        frames.append(
+            pd.DataFrame(
+                {"precipitation": np.full(len(index), fill, dtype="float32")},
+                index=index,
+            )
+        )
+    data = pd.concat(frames)
+    multi_year = RoClimatePoint(
+        lon=26.1025,
+        lat=44.4325,
+        i=597,
+        j=392,
+        grid_lon=26.105,
+        grid_lat=44.435,
+        data=data,
+        variables=(PRECIPITATION,),
+        frontiers={"precipitation": pd.Timestamp("2021-12-31")},
+        store_url="https://example.invalid/store/",
+    )
+
+    assert multi_year.wettest_year() == pytest.approx((2021, 730.0))
+    assert multi_year.driest_year() == pytest.approx((2020, 366.0))
+    summary = multi_year.precipitation_summary()
+    assert summary["mean_annual"] == pytest.approx(548.0)
+    assert summary["wettest"] == pytest.approx((2021, 730.0))
+    assert summary["driest"] == pytest.approx((2020, 366.0))
+
+
+def test_extreme_dates_all_missing(point):
+    point.data["precipitation"] = np.nan
+    row = point.extreme_dates("precipitation").loc["precipitation"]
+    assert np.isnan(row["min"]) and np.isnan(row["max"])
+    assert pd.isna(row["min_date"]) and pd.isna(row["max_date"])
+
+
 def test_aggregate_month(point):
     jan = point.aggregate("max_temp", "max", months=1)
     assert jan == pytest.approx(point.data.loc["2020-01", "max_temp"].max())

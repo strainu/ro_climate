@@ -19,6 +19,8 @@ from .exceptions import (
 )
 from ._reduce import (
     VALID_HOW as _VALID_HOW,
+    extreme_dates as _extreme_dates,
+    extreme_index as _extreme_index,
     reduce_grouped as _reduce_grouped,
     reduce_series as _reduce_series,
 )
@@ -375,6 +377,65 @@ class RoClimatePoint:
         lowest = self.resample("YS", "min", names).add_suffix("_min")
         return highest.join(lowest)
 
+    def extreme_dates(self, variables=None) -> pd.DataFrame:
+        """Return minima, maxima, and their dates for each variable."""
+        selected = self._resolve(variables)
+        frame = self.data[[variable.name for variable in selected]]
+        result = _extreme_dates(frame)
+        result.index.name = "variable"
+        return result
+
+    def annual_mean_temperature(self) -> pd.Series:
+        """Return annual means of the daily mean temperature."""
+        result = self.tmean.resample("YS").mean()
+        result.name = "tmean"
+        return result
+
+    def monthly_mean_temperature(self) -> pd.Series:
+        """Return climatological monthly means of mean temperature."""
+        values = self.tmean
+        result = values.groupby(values.index.month).mean()
+        result.index.name = "month"
+        result.name = "tmean"
+        return result
+
+    def warmest_month(self) -> tuple[int, float]:
+        """Return the warmest calendar month and its mean temperature."""
+        month, value = _extreme_index(self.monthly_mean_temperature(), "max")
+        return int(month), value
+
+    def coldest_month(self) -> tuple[int, float]:
+        """Return the coldest calendar month and its mean temperature."""
+        month, value = _extreme_index(self.monthly_mean_temperature(), "min")
+        return int(month), value
+
+    def wettest_year(self) -> tuple[int, float]:
+        """Return the wettest year and its annual precipitation total."""
+        year, value = _extreme_index(self._annual_precipitation(), "max")
+        return int(pd.Timestamp(year).year), value
+
+    def driest_year(self) -> tuple[int, float]:
+        """Return the driest year and its annual precipitation total."""
+        year, value = _extreme_index(self._annual_precipitation(), "min")
+        return int(pd.Timestamp(year).year), value
+
+    def precipitation_summary(self) -> dict:
+        """Return mean annual precipitation and the wettest/driest years."""
+        annual = self._annual_precipitation()
+        wettest_year, wettest_value = _extreme_index(annual, "max")
+        driest_year, driest_value = _extreme_index(annual, "min")
+        return {
+            "mean_annual": float(annual.mean()),
+            "wettest": (
+                int(pd.Timestamp(wettest_year).year),
+                wettest_value,
+            ),
+            "driest": (
+                int(pd.Timestamp(driest_year).year),
+                driest_value,
+            ),
+        }
+
     def climatology(self, freq: str = "month") -> pd.DataFrame:
         """Return mean values grouped by calendar month or day of year."""
         selected = self._resolve()
@@ -657,6 +718,12 @@ class RoClimatePoint:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+    def _annual_precipitation(self) -> pd.Series:
+        """Return annual precipitation totals without empty years."""
+        self._require("precipitation")
+        annual = self.annual_total("precipitation")["precipitation"]
+        return annual.dropna()
+
     def _resolve(self, variables=None) -> tuple[Variable, ...]:
         """Validate requested variables and ensure they are loaded."""
         selected = (

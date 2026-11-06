@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from ro_climate import RoClimate, RoClimateArea, DEFAULT_VARIABLES
+from ro_climate import MAX_TEMP, MIN_TEMP, PRECIPITATION
 from ro_climate import grid
 from ro_climate.area import column_name, resolve_reductions
 from ro_climate.exceptions import (
@@ -140,6 +141,41 @@ def make_client(tmp_path, *, fill=None):
     return client
 
 
+def make_area(data, *, variables, reductions=("mean",)):
+    """Create a synthetic area with fixed metadata."""
+
+    return RoClimateArea(
+        bounds=FULL_BOUNDS,
+        i0=I0,
+        i1=I1,
+        j0=J0,
+        j1=J1,
+        data=data,
+        variables=variables,
+        reductions=reductions,
+        frontiers={
+            variable.name: data.index.max() for variable in variables
+        },
+        store_url="https://example.invalid/store/",
+    )
+
+
+def precipitation_area() -> RoClimateArea:
+    """Return a two-year synthetic precipitation area."""
+
+    frames = []
+    for year, fill in ((2020, 1.0), (2021, 2.0)):
+        index = pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D")
+        frames.append(
+            pd.DataFrame(
+                {"precipitation_mean": np.full(len(index), fill)},
+                index=index,
+            )
+        )
+    data = pd.concat(frames)
+    return make_area(data, variables=(PRECIPITATION,))
+
+
 def test_resolve_reductions_order_and_validation():
     assert resolve_reductions(None) == ("mean",)
     assert resolve_reductions("max") == ("max",)
@@ -201,6 +237,109 @@ def test_area_default_reduction_is_mean(tmp_path):
     assert area.columns == ("max_temp_mean",)
     assert area.coverage.loc["max_temp", "n_cells"] == N_ROWS * N_COLS
     client.close()
+
+
+def test_area_temperature_summary(tmp_path):
+    client = make_client(tmp_path)
+    area = client.area(
+        bounds=FULL_BOUNDS,
+        start=START,
+        end="2020-01-05",
+        variables=("max_temp", "min_temp"),
+    )
+    expected = (
+        area.data["max_temp_mean"] + area.data["min_temp_mean"]
+    ) / 2.0
+    np.testing.assert_allclose(
+        area.tmean.to_numpy(), expected.to_numpy(), equal_nan=True
+    )
+    assert area.mean_temperature() == pytest.approx(expected.mean())
+
+    annual = area.annual_mean_temperature()
+    assert annual.index.tolist() == [pd.Timestamp("2020-01-01")]
+    assert annual.iloc[0] == pytest.approx(expected.mean())
+
+    monthly = area.monthly_mean_temperature()
+    assert monthly.index.tolist() == [1]
+    assert monthly.loc[1] == pytest.approx(expected.mean())
+    assert area.warmest_month() == pytest.approx((1, expected.mean()))
+    assert area.coldest_month() == pytest.approx((1, expected.mean()))
+    client.close()
+
+
+def test_area_extreme_dates(tmp_path):
+    client = make_client(tmp_path)
+    area = client.area(
+        bounds=FULL_BOUNDS,
+        start=START,
+        end="2020-01-05",
+        variables="max_temp",
+        reductions=("mean", "min", "max"),
+    )
+    result = area.extreme_dates(
+        variables="max_temp", reductions=("mean", "max")
+    )
+    assert result.index.tolist() == ["max_temp_mean", "max_temp_max"]
+    for column in result.index:
+        series = area.data[column].dropna()
+        row = result.loc[column]
+        assert row["min"] == pytest.approx(series.min())
+        assert row["max"] == pytest.approx(series.max())
+        assert row["min_date"] == series.idxmin()
+        assert row["max_date"] == series.idxmax()
+    client.close()
+
+
+def test_area_extreme_dates_all_missing(tmp_path):
+    client = make_client(tmp_path, fill=np.nan)
+    area = client.area(
+        bounds=FULL_BOUNDS, start=START, end="2020-01-05", variables="max_temp"
+    )
+    row = area.extreme_dates().loc["max_temp_mean"]
+    assert np.isnan(row["min"]) and np.isnan(row["max"])
+    assert pd.isna(row["min_date"]) and pd.isna(row["max_date"])
+    client.close()
+
+
+def test_area_annual_extremes(tmp_path):
+    client = make_client(tmp_path)
+    area = client.area(
+        bounds=FULL_BOUNDS, start=START, end="2020-01-05", variables="max_temp"
+    )
+    result = area.annual_extremes()
+    assert result.index.tolist() == [pd.Timestamp("2020-01-01")]
+    assert result.loc["2020-01-01", "max_temp_mean_max"] == pytest.approx(
+        area.data["max_temp_mean"].max()
+    )
+    assert result.loc["2020-01-01", "max_temp_mean_min"] == pytest.approx(
+        area.data["max_temp_mean"].min()
+    )
+    client.close()
+
+
+def test_area_precipitation_extremes():
+    area = precipitation_area()
+    assert area.wettest_year() == pytest.approx((2021, 730.0))
+    assert area.driest_year() == pytest.approx((2020, 366.0))
+    summary = area.precipitation_summary()
+    assert summary["mean_annual"] == pytest.approx(548.0)
+    assert summary["wettest"] == pytest.approx((2021, 730.0))
+    assert summary["driest"] == pytest.approx((2020, 366.0))
+
+
+def test_area_temperature_requires_mean():
+    index = pd.date_range("2020-01-01", periods=2, freq="D")
+    data = pd.DataFrame(
+        {"max_temp_max": [10.0, 11.0], "min_temp_max": [1.0, 2.0]},
+        index=index,
+    )
+    area = make_area(
+        data,
+        variables=(MAX_TEMP, MIN_TEMP),
+        reductions=("max",),
+    )
+    with pytest.raises(UnknownVariableError):
+        _ = area.tmean
 
 
 def test_area_polygon_mask_and_bounds(tmp_path):

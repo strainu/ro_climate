@@ -10,7 +10,13 @@ import numpy as np
 import pandas as pd
 
 from . import grid
-from ._reduce import VALID_HOW, reduce_grouped, reduce_series
+from ._reduce import (
+    VALID_HOW,
+    extreme_dates as _extreme_dates,
+    extreme_index as _extreme_index,
+    reduce_grouped,
+    reduce_series,
+)
 from .archive import write_archive
 from .exceptions import (
     InvalidTimeRangeError,
@@ -450,6 +456,28 @@ class RoClimateArea:
         return desc
 
     # ------------------------------------------------------------------
+    # Derived variables
+    # ------------------------------------------------------------------
+    @property
+    def tmean(self) -> pd.Series:
+        """Return the daily spatial mean temperature.
+
+        The value is ``(max_temp_mean + min_temp_mean) / 2`` and therefore
+        requires the ``mean`` reduction for both temperature variables.
+        """
+        self._require("max_temp_mean", "min_temp_mean")
+        result = (
+            self.data["max_temp_mean"] + self.data["min_temp_mean"]
+        ) / 2.0
+        result.name = "tmean"
+        result.attrs["units"] = "°C"
+        return result
+
+    def mean_temperature(self) -> float:
+        """Return the mean of the daily spatial mean temperature series."""
+        return float(self.tmean.mean())
+
+    # ------------------------------------------------------------------
     # Time aggregation
     # ------------------------------------------------------------------
     def resample(
@@ -516,6 +544,79 @@ class RoClimateArea:
     ) -> pd.DataFrame:
         """Return annual totals, precipitation by default."""
         return self.resample("YS", "sum", variables, reductions)
+
+    def annual_extremes(self, variables=None, reductions=None) -> pd.DataFrame:
+        """Return yearly maxima and minima with ``_max``/``_min`` suffixes."""
+        highest = self.resample(
+            "YS", "max", variables, reductions
+        ).add_suffix("_max")
+        lowest = self.resample(
+            "YS", "min", variables, reductions
+        ).add_suffix("_min")
+        return highest.join(lowest)
+
+    def extreme_dates(self, variables=None, reductions=None) -> pd.DataFrame:
+        """Return minima, maxima, and their dates for each summary series."""
+        specs = self._selected_specs(variables, reductions)
+        frame = self.data[[column for _, _, column in specs]]
+        result = _extreme_dates(frame)
+        result.index.name = "column"
+        return result
+
+    def annual_mean_temperature(self) -> pd.Series:
+        """Return annual means of the daily spatial mean temperature."""
+        result = self.tmean.resample("YS").mean()
+        result.name = "tmean"
+        return result
+
+    def monthly_mean_temperature(self) -> pd.Series:
+        """Return climatological monthly means of mean temperature."""
+        values = self.tmean
+        result = values.groupby(values.index.month).mean()
+        result.index.name = "month"
+        result.name = "tmean"
+        return result
+
+    def warmest_month(self) -> tuple[int, float]:
+        """Return the warmest calendar month and its mean temperature."""
+        month, value = _extreme_index(self.monthly_mean_temperature(), "max")
+        return int(month), value
+
+    def coldest_month(self) -> tuple[int, float]:
+        """Return the coldest calendar month and its mean temperature."""
+        month, value = _extreme_index(self.monthly_mean_temperature(), "min")
+        return int(month), value
+
+    def wettest_year(self, reduction: str = "mean") -> tuple[int, float]:
+        """Return the wettest year and its annual precipitation total."""
+        year, value = _extreme_index(
+            self._annual_precipitation(reduction), "max"
+        )
+        return int(pd.Timestamp(year).year), value
+
+    def driest_year(self, reduction: str = "mean") -> tuple[int, float]:
+        """Return the driest year and its annual precipitation total."""
+        year, value = _extreme_index(
+            self._annual_precipitation(reduction), "min"
+        )
+        return int(pd.Timestamp(year).year), value
+
+    def precipitation_summary(self, reduction: str = "mean") -> dict:
+        """Return mean annual precipitation and the wettest/driest years."""
+        annual = self._annual_precipitation(reduction)
+        wettest_year, wettest_value = _extreme_index(annual, "max")
+        driest_year, driest_value = _extreme_index(annual, "min")
+        return {
+            "mean_annual": float(annual.mean()),
+            "wettest": (
+                int(pd.Timestamp(wettest_year).year),
+                wettest_value,
+            ),
+            "driest": (
+                int(pd.Timestamp(driest_year).year),
+                driest_value,
+            ),
+        }
 
     def climatology(self, freq: str = "month") -> pd.DataFrame:
         """Return means grouped by calendar month or day of year."""
@@ -680,6 +781,13 @@ class RoClimateArea:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+    def _annual_precipitation(self, reduction: str = "mean") -> pd.Series:
+        """Return annual precipitation totals without empty years."""
+        column = column_name("precipitation", reduction)
+        self._require(column)
+        annual = self.annual_total("precipitation", [reduction])
+        return annual[column].dropna()
+
     def _selected_specs(
         self,
         variables=None,

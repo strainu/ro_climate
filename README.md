@@ -120,6 +120,14 @@ point.monthly_total()             # precipitation totals
 point.annual_mean()
 point.annual_total()
 point.annual_extremes()           # yearly max and min for each variable
+point.extreme_dates()             # min/max values and their dates
+point.annual_mean_temperature()   # yearly means of (max_temp + min_temp) / 2
+point.monthly_mean_temperature()  # climatological monthly means
+point.warmest_month()             # (month, mean temperature)
+point.coldest_month()             # (month, mean temperature)
+point.wettest_year()              # (year, annual precipitation)
+point.driest_year()               # (year, annual precipitation)
+point.precipitation_summary()     # mean, wettest and driest year
 point.climatology("month")        # mean by calendar month
 point.climatology("dayofyear")    # mean by day of year
 
@@ -190,6 +198,29 @@ point.rain_days(1.0, by="month")
 point.frost_days(0.0, by="season_year")
 point.hot_days(30, by="YS")     # any pandas offset alias
 ```
+
+### Climate description helpers
+
+These return structured values for narrative summaries:
+
+```python
+point.extreme_dates(["min_temp", "max_temp"])
+#                   min  min_date      max  max_date
+# min_temp       ...  ...           ...  ...
+# max_temp       ...  ...           ...  ...
+
+point.annual_mean_temperature()   # yearly means of (max_temp + min_temp) / 2
+point.monthly_mean_temperature()  # climatological monthly means
+point.warmest_month(), point.coldest_month()
+point.precipitation_summary()
+# {'mean_annual': ..., 'wettest': (year, value), 'driest': (year, value)}
+```
+
+`extreme_dates()` reports the value and date of the minimum and maximum. For a
+point, the index is the variable; values are computed over the loaded period.
+
+These helpers operate on the existing summary series. Spatial ranges across a
+county require per-cell aggregation and are not provided by the area object.
 
 ## Area and grid summaries
 
@@ -283,9 +314,22 @@ area.sum(), area.describe()
 area.resample("MS", "mean")
 area.monthly_mean(), area.monthly_total()
 area.annual_mean(), area.annual_total()
+area.annual_extremes()
+area.extreme_dates()
 area.climatology("month"), area.climatology("dayofyear")
 area.aggregate("max_temp", "max", how="mean", months=1, groupby="year")
+
+area.tmean                     # daily spatial mean temperature
+area.mean_temperature()
+area.annual_mean_temperature()
+area.monthly_mean_temperature()
+area.warmest_month(), area.coldest_month()
+area.wettest_year(), area.driest_year()
+area.precipitation_summary()
 ```
+
+`area.tmean` is `(max_temp_mean + min_temp_mean) / 2`, so both temperature
+variables must be loaded with the default `mean` reduction.
 
 ### Area reads
 
@@ -375,8 +419,10 @@ pandas, so override `float_format` or use `sep=";"` as needed.
 - Statistics: `.mean/.avg/.max/.min/.median/.std/.var/.quantile/.count/
   .sum/.describe`
 - Aggregation: `.resample`, `.monthly_mean`, `.monthly_total`,
-  `.annual_mean`, `.annual_total`, `.annual_extremes`, `.climatology`,
-  `.aggregate`
+  `.annual_mean`, `.annual_total`, `.annual_extremes`, `.extreme_dates`,
+  `.annual_mean_temperature`, `.monthly_mean_temperature`,
+  `.warmest_month`, `.coldest_month`, `.wettest_year`, `.driest_year`,
+  `.precipitation_summary`, `.climatology`, `.aggregate`
 - Indices and derived values as listed above
 - Exports: `.to_csv`, `.to_json`, `.to_npz`, `.to_zip`, `.metadata`
 
@@ -384,13 +430,16 @@ pandas, so override `float_format` or use `sep=";"` as needed.
 
 - Access: `.data`, `.bounds`, `.i0/.i1/.j0/.j1`, `.shape`, `.n_cells`,
   `.variables`, `.reductions`, `.columns`, `.polygon`, `.coverage`,
-  `.warnings`
+  `.warnings`, `.tmean`
 - Selection: `.at(date)`, `.subset(...)`, `.series(variable, reduction)`,
   `area["max_temp_mean"]`, `area[["max_temp_mean", "max_temp_max"]]`
 - Statistics over daily spatial summaries: `.mean/.avg/.max/.min/.median/
-  .std/.var/.quantile/.count/.sum/.describe`
+  .std/.var/.quantile/.count/.sum/.describe`, `.mean_temperature`
 - Aggregation: `.resample`, `.monthly_mean`, `.monthly_total`,
-  `.annual_mean`, `.annual_total`, `.climatology`, `.aggregate`
+  `.annual_mean`, `.annual_total`, `.annual_extremes`, `.extreme_dates`,
+  `.annual_mean_temperature`, `.monthly_mean_temperature`,
+  `.warmest_month`, `.coldest_month`, `.wettest_year`, `.driest_year`,
+  `.precipitation_summary`, `.climatology`, `.aggregate`
 - Exports: `.to_csv`, `.to_json`, `.to_npz`, `.to_zip`, `.metadata`
 
 ## Tests
