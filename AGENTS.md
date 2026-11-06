@@ -14,7 +14,7 @@ depend on the parent `pywikibot` checkout.
 - Distribution: `ro-climate`
 - Package/import: `ro_climate`
 - Public classes: `RoClimate`, `RoClimatePoint`, `RoClimateArea`,
-  `RoClimateCache`, `RoClimateError`
+  `RoClimateError`
 
 ## Setup and verification
 
@@ -50,10 +50,10 @@ Tests must pass without network access.
 
 | Path | Responsibility |
 | --- | --- |
-| `ro_climate/client.py` | `RoClimate`: STAC discovery, Zarr access, frontiers, point/area loading, cache orchestration |
+| `ro_climate/client.py` | `RoClimate`: STAC discovery, Zarr access, frontiers, point/area loading |
 | `ro_climate/point.py` | `RoClimatePoint`: data access, statistics, resampling, indices, exports |
 | `ro_climate/area.py` | `RoClimateArea`: spatial-reduction summaries, statistics, aggregation, exports |
-| `ro_climate/cache.py` | `RoClimateCache`, `CacheKey`, `AreaCacheKey`, zip archive read/write |
+| `ro_climate/archive.py` | Atomic zip archive writer used by exports |
 | `ro_climate/_chunk_cache.py` | Private raw Zarr chunk cache and caching store wrapper |
 | `ro_climate/_reduce.py` | Shared temporal reduction helpers |
 | `ro_climate/_store.py` | Private read-only `RequestsStore` for Zarr v2 over HTTP |
@@ -74,7 +74,7 @@ Tests must pass without network access.
 - No plotting. Exports are CSV, JSON, NPZ, and zip only.
 - Keep public names exported from `ro_climate/__init__.py` and listed in
   `__all__` when public.
-- Do not write CSV files into cache archives.
+- Do not write CSV files into export archives.
 
 ## Behavior contract
 
@@ -104,23 +104,19 @@ Tests must pass without network access.
   selected cell are read. Time reads are aligned to Zarr time chunks.
 - Bounds outside the grid are clipped with an `RoClimateArea.warnings` entry;
   an `end` beyond the frontier is clamped with a warning.
-- The point cache key is `(store_url, i, j, variable set)`. One zip archive per
-  key; the requested date range lives in metadata. A wider later request extends
-  the archive, and a covered request is served without re-downloading chunks.
-- The area cache key is `(store_url, i0, i1, j0, j1, variables, reductions,
-  polygon-mask digest, min_count)`. Area archives store daily summaries, not
-  raw grids, and use the prefix `ro_climate_area_...`.
-- Cache archive contents: `data.npy`, `dates.npy`, `metadata.json`,
-  `README.txt`. Writes must remain atomic.
-- Cache directory override: `RO_CLIMATE_CACHE_DIR`. Point archive prefix:
-  `ro_climate_lat...`.
-- The optional raw chunk cache lives under `<cache root>/chunks/<store digest>/`
-  and is keyed by store/variable/time/y/x. `chunk_cache_max_mb` evicts the
-  oldest chunks. `cache_info()` lists archives, `chunk_cache_info()` lists raw
-  chunks, and `clear_cache()`/`prune_cache()` cover both.
-- Offline mode reads only the local summary cache and raises `CacheMissError`
-  when no covering archive exists. Partial raw chunk sets are not used for
-  offline area reads.
+- Point series and area summaries are not archived; both are rebuilt from
+  raw Zarr chunks on every request. The only cache is the raw chunk cache.
+- The raw chunk cache is enabled by default and lives under
+  `<cache root>/chunks/<store digest>/`, keyed by store/variable/time/y/x.
+  Its limit defaults to 20 GB, overridable with `chunk_cache_max_mb` or
+  `RO_CLIMATE_CHUNK_CACHE_MAX_MB`; `0` disables the limit. Oldest chunks are
+  evicted first. `chunk_cache_info()` lists chunks, and
+  `clear_cache()`/`prune_cache()` manage them.
+- `point(refresh=True)` and `area(refresh=True)` invalidate cached chunks
+  covering the requested range.
+- Export archives (`to_zip`) contain `data.npy`, `dates.npy`,
+  `metadata.json`, `README.txt`. Writes must remain atomic.
+- Cache directory override: `RO_CLIMATE_CACHE_DIR`.
 
 ## Data source facts
 
@@ -138,7 +134,7 @@ Tests must pass without network access.
 - Tests use synthetic in-memory data and fake HTTP sessions; they never contact
   the network.
 - Add or update tests for every behavior change.
-- Use `tmp_path` for cache and export tests.
+- Use `tmp_path` for chunk-cache and export tests.
 - Area tests use a fake 3-D array with small chunks to verify chunk pruning and
   spatial reductions without network access.
 - Chunk-cache tests exercise path naming, invalidation, eviction, and the
@@ -161,8 +157,6 @@ Tests must pass without network access.
 
 - Do not infer data availability from STAC `end_datetime`.
 - Do not mix variable frontiers when multiple variables are requested.
-- Do not change the cache key without considering old archives and
-  `FORMAT_VERSION`.
 - Select polygon cells by their centres; do not treat polygon vertices as grid
   indices or add exact-area weighting without changing the documented contract.
 - Keep chunk-cache file names (`<time>.<y>.<x>` bucketed by `time // 1000`) and

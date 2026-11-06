@@ -4,7 +4,7 @@
 daily gridded meteorological cube** for Romania. It reads single grid cells or
 rectangular/polygon areas for an optional date range, returns pandas time
 series or daily spatial summaries, and provides statistics, time aggregation,
-climate indices, exports, and a local zip cache.
+climate indices, exports, and a local chunk cache.
 
 - Store: `https://storage.svc.uvt-01.eocube.ro/meteo/cube/open-v1/`
 - STAC item: `https://stac.eocube.ro/collections/anm-daily-grids/items/anm-daily-grids-open-v1`
@@ -53,9 +53,8 @@ with RoClimate() as client:
 > minutes per variable. For interactive work, pass a narrower `start`/`end`
 > and select only the variables you need. Area requests are chunk-aligned and
 > read each intersecting chunk once instead of repeating a point download for
-> every cell. The local zip cache makes later reads of the same point or area
-> local; `chunk_cache=True` additionally reuses raw Zarr chunks across
-> overlapping requests.
+> every cell. Point series and area summaries are not archived; the raw Zarr
+> chunk cache (enabled by default) makes later overlapping requests local.
 
 The requested coordinate is snapped to the containing 0.01° grid cell. The
 result records the cell indices, the cell centre, and the cell bounds:
@@ -266,12 +265,9 @@ area.shape                # (rows, columns) of the grid window
 area.variables, area.reductions, area.columns
 area.coverage             # valid cell-days per variable
 area.warnings             # clipping and clamping notices
-area.from_cache, area.cache_path
 ```
 
-`.coverage` is exact when a `count` reduction is loaded. Without `count`, it
-reports archive-level valid cell-days and uses `NaN` for date subsets that the
-archive does not describe exactly.
+`.coverage` covers the requested date range and the selected cells.
 
 It offers the same style of access and aggregation as a point:
 
@@ -291,94 +287,48 @@ area.climatology("month"), area.climatology("dayofyear")
 area.aggregate("max_temp", "max", how="mean", months=1, groupby="year")
 ```
 
-### Area caching
+### Area reads
 
-Area summaries use a separate zip archive per grid window:
+Area summaries are not stored. Each call reads the chunks intersecting the
+selected cells and computes the requested reductions.
 
-```text
-ro_climate_area_i597-627_j372-402_max-temp-precipitation_mean-max_ab12cd34ef56.zip
-```
+## Local chunk cache
 
-The cache key is `(store URL, grid window, variables, reductions, polygon-mask
-digest, min_count)`. The archive stores daily summaries, not raw grids. A
-wider later request extends the archive; a request covered by the archive is
-served locally. `area.from_cache` reports whether the values came entirely
-from the archive.
-
-`area()` accepts the same `cache`, `refresh`, and `strict` options as
-`point()`. In `offline=True` mode an area request requires a local archive
-that fully covers the requested date range, otherwise it raises
-`CacheMissError`.
-
-## Local zip cache
-
-Caching is enabled by default. Each cached point/variable set is a single zip
-archive named after the grid centre, and each area summary is a separate
-archive named after its grid window, for example:
-
-```text
-ro_climate_lat44.4350_lon26.1050_max-temp-min-temp-precipitation_a787356e6d8f.zip
-ro_climate_area_i597-627_j372-402_max-temp_mean_5a6b7c8d9e0f.zip
-```
-
-The archive contains:
-
-```text
-data.npy       float32 values, shape (days, variables)
-dates.npy      datetime64[D] dates
-metadata.json  grid cell, actual/requested range, frontiers, units, licence,
-               attribution, warnings, retrieval time
-README.txt     human-readable provenance note
-```
-
-No CSV is written inside the cache. The cache key includes the store URL,
-cell indices, and variable set; the requested date range is stored in the
-metadata. A later request for a wider range updates the archive, and a request
-covered by the archive is served without re-downloading the data chunks (the
-small frontier scalars may still be refreshed). Area archives use the same
-format, extended with the grid window, reductions, polygon mask digest, and
-`min_count`.
-
-For raw-chunk reuse across overlapping point and area requests, enable the
-optional chunk cache:
+The only cache is the raw compressed Zarr chunk cache, enabled by default:
 
 ```python
 client = RoClimate(
-    cache_dir="ro-climate-cache",
-    chunk_cache=True,
+    chunk_cache_dir="ro-climate-cache",
     chunk_cache_max_mb=2048,
 )
 ```
 
-Compressed Zarr chunks are stored under `<cache root>/chunks/<store digest>/`.
-`chunk_cache_max_mb` evicts the oldest chunks when the limit is exceeded.
-`client.chunk_cache_info()` summarises it, and `prune_cache()` and
-`clear_cache()` cover both archives and raw chunks.
+Compressed Zarr chunks are stored under
+`<chunk_cache_dir>/chunks/<store digest>/`. They are shared by point and area
+requests. The cache is capped at **20 GB** by default. Set
+`chunk_cache_max_mb=` or the `RO_CLIMATE_CHUNK_CACHE_MAX_MB` environment
+variable to change it; `0` disables the limit. The oldest chunks are evicted
+when the cap is exceeded.
 
 ```python
 from ro_climate import RoClimate
 
-client = RoClimate(cache_dir="ro-climate-cache")
+client = RoClimate(chunk_cache_dir="ro-climate-cache")
 point = client.point(26.1025, 44.4325, start="2020-01-01", end="2020-12-31")
-print(point.from_cache, point.cache_path)
+area = client.area(
+    bounds=(25.0, 44.0, 27.0, 45.0), start="2020-01-01", end="2020-12-31"
+)
 
-print(client.cache_info())       # one row per archive
+print(client.chunk_cache_info())
 client.prune_cache(older_than_days=30)
 client.clear_cache()
 client.close()
 ```
 
-Offline use:
-
-```python
-offline = RoClimate(cache_dir="ro-climate-cache", offline=True)
-point = offline.point(26.1025, 44.4325, start="2020-01-01", end="2020-12-31")
-# A missing or non-covering archive raises CacheMissError.
-```
-
-Set `RO_CLIMATE_CACHE_DIR` to override the platform cache directory. Pass
-`cache=False` to bypass the cache for a client, or `refresh=True` to a
-`point()` call to re-download and replace the archive.
+Set `RO_CLIMATE_CACHE_DIR` to override the platform cache root and
+`RO_CLIMATE_CHUNK_CACHE_MAX_MB` to override the size cap. Pass
+`chunk_cache=False` to disable local storage, or `refresh=True` to a `point()`
+or `area()` call to invalidate the chunks covering the requested range.
 
 ## Exports
 
@@ -386,7 +336,7 @@ Set `RO_CLIMATE_CACHE_DIR` to override the platform cache directory. Pass
 point.to_csv("bucharest_2020.csv")
 point.to_json("bucharest_2020.json")
 point.to_npz("bucharest_2020.npz")
-point.to_zip("bucharest_2020.zip")   # same layout as the cache archive
+point.to_zip("bucharest_2020.zip")   # same archive layout
 print(point.metadata())
 
 area.to_csv("muntenia_2020.csv")
@@ -404,24 +354,22 @@ pandas, so override `float_format` or use `sep=";"` as needed.
 
 `RoClimate(...)`
 
-- `RoClimate(store_url=None, *, discover=True, cache=True, cache_dir=None,
-  offline=False, chunk_cache=False, chunk_cache_max_mb=None, timeout=30.0,
-  retries=3, frontier_ttl=3600)`
-- `.point(lon, lat, start=None, end=None, variables=None, *, cache=None,
-  refresh=None, strict=False) -> RoClimatePoint`
+- `RoClimate(store_url=None, *, discover=True, chunk_cache=True,
+  chunk_cache_dir=None, chunk_cache_max_mb=None, timeout=30.0, retries=3,
+  frontier_ttl=3600)`
+- `.point(lon, lat, start=None, end=None, variables=None, *, refresh=None,
+  strict=False) -> RoClimatePoint`
 - `.area(bounds=None, start=None, end=None, variables=None, reductions=None,
-  *, polygon=None, min_count=1, allow_non_additive=False, cache=None,
-  refresh=None, strict=False) -> RoClimateArea`
+  *, polygon=None, min_count=1, allow_non_additive=False, refresh=None,
+  strict=False) -> RoClimateArea`
 - `.frontiers(force=False)` — last written day per variable
-- `.cache_info()`, `.chunk_cache_info()`, `.clear_cache()`,
-  `.prune_cache(older_than_days=30)`
+- `.chunk_cache_info()`, `.clear_cache()`, `.prune_cache(older_than_days=30)`
 - Context manager and `.close()`
 
 `RoClimatePoint`
 
 - Access: `.data`, `.variables`, `.units`, `.start`, `.end`, `.i`, `.j`,
-  `.grid_lon`, `.grid_lat`, `.cell_bounds`, `.coverage`, `.warnings`,
-  `.from_cache`, `.cache_path`
+  `.grid_lon`, `.grid_lat`, `.cell_bounds`, `.coverage`, `.warnings`
 - Selection: `.at(date)`, `.subset(...)`, `point["max_temp"]`,
   `point[["max_temp", "precipitation"]]`
 - Statistics: `.mean/.avg/.max/.min/.median/.std/.var/.quantile/.count/
@@ -436,7 +384,7 @@ pandas, so override `float_format` or use `sep=";"` as needed.
 
 - Access: `.data`, `.bounds`, `.i0/.i1/.j0/.j1`, `.shape`, `.n_cells`,
   `.variables`, `.reductions`, `.columns`, `.polygon`, `.coverage`,
-  `.warnings`, `.from_cache`, `.cache_path`
+  `.warnings`
 - Selection: `.at(date)`, `.subset(...)`, `.series(variable, reduction)`,
   `area["max_temp_mean"]`, `area[["max_temp_mean", "max_temp_max"]]`
 - Statistics over daily spatial summaries: `.mean/.avg/.max/.min/.median/
@@ -455,6 +403,5 @@ python -m pytest
 
 The tests use a synthetic in-memory group and never contact the network.
 They cover grid mapping, statistics, resampling, indices, area summaries and
-polygon masks, chunk-aligned reads, the zip cache, the raw chunk cache, the
-requests-backed store, client fetching, cache hits and extension, and offline
-mode.
+polygon masks, chunk-aligned reads, the raw chunk cache, the requests-backed
+store, client fetching, and export archives.

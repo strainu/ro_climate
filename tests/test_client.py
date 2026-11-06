@@ -7,7 +7,6 @@ import pytest
 from ro_climate import RoClimate, DEFAULT_VARIABLES
 from ro_climate import grid
 from ro_climate.exceptions import (
-    CacheMissError,
     NoDataError,
     OutsideGridError,
     UnknownVariableError,
@@ -71,18 +70,15 @@ class FakeKV:
         pass
 
 
-def make_client(tmp_path, *, offline=False, cache=True, fill=None):
+def make_client(tmp_path, *, fill=None):
     client = RoClimate(
         store_url="https://example.invalid/store/",
         discover=False,
-        cache=cache,
-        cache_dir=tmp_path,
-        offline=offline,
+        chunk_cache_dir=tmp_path,
     )
-    if not offline:
-        group = FakeGroup(fill=fill)
-        client._open_group = lambda: group
-        client.frontiers = lambda *, force=False: dict(FRONTIERS)
+    group = FakeGroup(fill=fill)
+    client._open_group = lambda: group
+    client.frontiers = lambda *, force=False: dict(FRONTIERS)
     return client
 
 
@@ -92,7 +88,6 @@ def test_point_fetch_and_metadata(tmp_path):
         26.1025, 44.4325, start="2020-01-01", end="2020-01-07"
     )
 
-    assert not point.from_cache
     assert point.i == 597 and point.j == 392
     assert point.grid_lon == pytest.approx(grid.X_MIN + grid.STEP * 597)
     assert point.grid_lat == pytest.approx(grid.Y_MAX - grid.STEP * 392)
@@ -102,11 +97,11 @@ def test_point_fetch_and_metadata(tmp_path):
     assert point.data["max_temp"].iloc[0] == pytest.approx(
         grid.date_to_index("2020-01-01") + 10.0
     )
-    assert point.cache_path is not None and point.cache_path.is_file()
+    assert list(tmp_path.glob("*.zip")) == []
     client.close()
 
 
-def test_point_uses_cache_on_second_call(tmp_path):
+def test_point_is_not_archived(tmp_path):
     client = make_client(tmp_path)
     first = client.point(
         26.1025, 44.4325, start="2020-01-01", end="2020-01-07"
@@ -115,19 +110,7 @@ def test_point_uses_cache_on_second_call(tmp_path):
         26.1025, 44.4325, start="2020-01-01", end="2020-01-07"
     )
 
-    assert not first.from_cache
-    assert second.from_cache
-    assert second.cache_path == first.cache_path
     pd.testing.assert_frame_equal(first.data, second.data)
-    client.close()
-
-
-def test_point_cache_false(tmp_path):
-    client = make_client(tmp_path, cache=False)
-    point = client.point(
-        26.1025, 44.4325, start="2020-01-01", end="2020-01-07"
-    )
-    assert point.cache_path is None
     assert list(tmp_path.glob("*.zip")) == []
     client.close()
 
@@ -183,8 +166,7 @@ def test_point_variable_order_is_stable(tmp_path):
         end="2020-01-07",
         variables=["max_temp", "precipitation"],
     )
-    assert normal.from_cache
-    assert normal.cache_path == reversed_point.cache_path
+    pd.testing.assert_frame_equal(normal.data, reversed_point.data)
     client.close()
 
 
@@ -209,7 +191,7 @@ def test_point_unknown_variable(tmp_path):
 
 
 def test_point_strict_with_missing_values(tmp_path):
-    client = make_client(tmp_path, cache=False, fill=np.nan)
+    client = make_client(tmp_path, fill=np.nan)
     with pytest.raises(NoDataError):
         client.point(
             26.1025,
@@ -221,44 +203,11 @@ def test_point_strict_with_missing_values(tmp_path):
     client.close()
 
 
-def test_offline_cache_hit(tmp_path):
-    online = make_client(tmp_path)
-    online.point(26.1025, 44.4325, start="2020-01-01", end="2020-01-07")
-    online.close()
-
-    offline = make_client(tmp_path, offline=True)
-    point = offline.point(
-        26.1025, 44.4325, start="2020-01-01", end="2020-01-07"
-    )
-    assert point.from_cache
-    assert len(point) == 7
-    offline.close()
-
-
-def test_offline_cache_miss(tmp_path):
-    offline = make_client(tmp_path, offline=True)
-    with pytest.raises(CacheMissError):
-        offline.point(26.1025, 44.4325, start="2020-01-01", end="2020-01-07")
-    offline.close()
-
-
-def test_cache_management(tmp_path):
-    client = make_client(tmp_path)
-    client.point(26.1025, 44.4325, start="2020-01-01", end="2020-01-07")
-
-    info = client.cache_info()
-    assert len(info) == 1
-    assert info.iloc[0]["i"] == 597
-    assert client.clear_cache() == 1
-    assert client.cache_info().empty
-    client.close()
-
-
 def test_frontiers_reads_scalar_arrays(tmp_path):
     client = RoClimate(
         store_url="https://example.invalid/store/",
         discover=False,
-        cache=False,
+        chunk_cache=False,
     )
     values = {}
     for name in DEFAULT_VARIABLES:
@@ -276,9 +225,7 @@ def test_chunk_cache_wiring_and_clear(tmp_path):
     client = RoClimate(
         store_url="https://example.invalid/store/",
         discover=False,
-        cache=True,
-        cache_dir=tmp_path,
-        chunk_cache=True,
+        chunk_cache_dir=tmp_path,
     )
     assert client.chunk_cache_info().empty
     client._chunk_cache.put("max_temp/0.0.0", b"x" * 2000)
@@ -291,7 +238,11 @@ def test_chunk_cache_wiring_and_clear(tmp_path):
 
 
 def test_chunk_cache_disabled_info_is_empty(tmp_path):
-    client = make_client(tmp_path)
+    client = RoClimate(
+        store_url="https://example.invalid/store/",
+        discover=False,
+        chunk_cache=False,
+    )
     assert client.chunk_cache_info().empty
     assert list(client.chunk_cache_info().columns) == [
         "variable",

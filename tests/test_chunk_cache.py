@@ -4,7 +4,15 @@ import time
 import pandas as pd
 import pytest
 
-from ro_climate._chunk_cache import CachingRequestsStore, ChunkCache
+from ro_climate import RoClimate
+from ro_climate._chunk_cache import (
+    CHUNK_CACHE_MAX_MB_ENV,
+    DEFAULT_CHUNK_CACHE_MAX_MB,
+    CachingRequestsStore,
+    ChunkCache,
+    default_chunk_cache_dir,
+    resolve_chunk_cache_max_mb,
+)
 
 STORE_URL = "https://example.invalid/store/"
 
@@ -227,3 +235,56 @@ def test_chunk_cache_info_empty(tmp_path):
         "newest",
     ]
     assert isinstance(info, pd.DataFrame)
+
+
+def test_default_chunk_cache_dir_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("RO_CLIMATE_CACHE_DIR", str(tmp_path / "custom"))
+    assert default_chunk_cache_dir() == tmp_path / "custom"
+
+
+def test_chunk_cache_limit_defaults_to_20_gb(monkeypatch):
+    monkeypatch.delenv(CHUNK_CACHE_MAX_MB_ENV, raising=False)
+    assert resolve_chunk_cache_max_mb() == DEFAULT_CHUNK_CACHE_MAX_MB == 20_000
+
+
+def test_chunk_cache_limit_from_environment(monkeypatch):
+    monkeypatch.setenv(CHUNK_CACHE_MAX_MB_ENV, "512")
+    assert resolve_chunk_cache_max_mb() == 512
+
+
+def test_chunk_cache_limit_explicit_value_wins(monkeypatch):
+    monkeypatch.setenv(CHUNK_CACHE_MAX_MB_ENV, "512")
+    assert resolve_chunk_cache_max_mb(64) == 64
+
+
+def test_chunk_cache_limit_zero_is_unlimited(monkeypatch):
+    monkeypatch.setenv(CHUNK_CACHE_MAX_MB_ENV, "0")
+    assert resolve_chunk_cache_max_mb() == 0
+
+
+def test_chunk_cache_limit_rejects_negative(monkeypatch):
+    monkeypatch.delenv(CHUNK_CACHE_MAX_MB_ENV, raising=False)
+    with pytest.raises(ValueError):
+        resolve_chunk_cache_max_mb(-1)
+
+
+def test_client_applies_default_chunk_cache_limit(tmp_path, monkeypatch):
+    monkeypatch.delenv(CHUNK_CACHE_MAX_MB_ENV, raising=False)
+    client = RoClimate(
+        store_url="https://example.invalid/store/",
+        discover=False,
+        chunk_cache_dir=tmp_path,
+    )
+    assert client._chunk_cache.max_bytes == 20_000_000_000
+    client.close()
+
+
+def test_client_chunk_cache_limit_zero_disables_limit(tmp_path):
+    client = RoClimate(
+        store_url="https://example.invalid/store/",
+        discover=False,
+        chunk_cache_dir=tmp_path,
+        chunk_cache_max_mb=0,
+    )
+    assert client._chunk_cache.max_bytes is None
+    client.close()

@@ -27,11 +27,3 @@ class NonAdditiveVariableError(RoClimateError, ValueError):
 
 class StoreUnavailableError(RoClimateError):
     """The remote Zarr store could not be reached or read."""
-
-
-class CacheError(RoClimateError):
-    """The local cache is invalid or cannot be used."""
-
-
-class CacheMissError(CacheError):
-    """Offline mode was requested but no suitable cached point exists."""

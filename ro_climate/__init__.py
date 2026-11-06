@@ -17,8 +17,6 @@ from .area import RoClimateArea
 from .client import RoClimate, DEFAULT_STORE, ITEM_URL
 from .exceptions import (
     RoClimateError,
-    CacheError,
-    CacheMissError,
     InvalidTimeRangeError,
     NoDataError,
     NonAdditiveVariableError,
@@ -61,6 +59,4 @@ __all__ = [
     "UnknownVariableError",
     "NonAdditiveVariableError",
     "StoreUnavailableError",
-    "CacheError",
-    "CacheMissError",
 ]

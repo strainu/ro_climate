@@ -11,7 +11,7 @@ import pandas as pd
 
 from . import grid
 from ._reduce import VALID_HOW, reduce_grouped, reduce_series
-from .cache import write_archive
+from .archive import write_archive
 from .exceptions import (
     InvalidTimeRangeError,
     NoDataError,
@@ -90,8 +90,6 @@ class RoClimateArea:
         n_cells: int | None = None,
         coverage: pd.DataFrame | None = None,
         warnings: Iterable[str] = (),
-        from_cache: bool = False,
-        cache_path: Path | None = None,
         retrieved_at: str | datetime | None = None,
         requested: dict | None = None,
     ) -> None:
@@ -120,13 +118,9 @@ class RoClimateArea:
         n_cells:
             Number of selected cells. Defaults to the full window size.
         coverage:
-            Optional archive-level coverage table.
+            Optional coverage table.
         warnings:
             Warnings recorded while loading the area.
-        from_cache:
-            Whether the data came from a local archive.
-        cache_path:
-            Local archive path, when cached.
         retrieved_at:
             Retrieval timestamp.
         requested:
@@ -163,8 +157,6 @@ class RoClimateArea:
             else None
         )
         self.warnings = tuple(warnings)
-        self.from_cache = bool(from_cache)
-        self.cache_path = Path(cache_path) if cache_path else None
         self.retrieved_at = retrieved_at
         self.requested = dict(requested) if requested is not None else None
         self.start = pd.Timestamp(data.index.min())
@@ -202,9 +194,9 @@ class RoClimateArea:
     def coverage(self) -> pd.DataFrame:
         """Return valid-cell coverage per variable.
 
-        When a ``count`` reduction is loaded, the table is exact for the
-        current date range. Otherwise it is the archive-level summary produced
-        while loading.
+        Uses a ``count`` reduction when present; otherwise returns the
+        coverage recorded when the area was loaded, or ``NaN`` for derived
+        subsets.
         """
         n_days = len(self.data)
         n_cell_days = self.n_cells * n_days
@@ -264,14 +256,13 @@ class RoClimateArea:
         """Return a compact summary of the area and its date range."""
         names = ",".join(variable.name for variable in self.variables)
         reductions = ",".join(self.reductions)
-        cache = " cache" if self.from_cache else ""
         return (
             f"RoClimateArea(bounds={self.bounds}, "
             f"grid=({self.i0}:{self.i1},{self.j0}:{self.j1}), "
             f"{self.n_cells} cells, "
             f"{self.start.date()}..{self.end.date()}, "
             f"{len(self)} days, vars=[{names}], "
-            f"reductions=[{reductions}]{cache})"
+            f"reductions=[{reductions}])"
         )
 
     def at(self, date: grid.DateLike) -> pd.Series:
@@ -356,8 +347,6 @@ class RoClimateArea:
             n_cells=self.n_cells,
             coverage=coverage,
             warnings=self.warnings,
-            from_cache=self.from_cache,
-            cache_path=self.cache_path,
             retrieved_at=self.retrieved_at,
             requested=self.requested,
         )
@@ -621,7 +610,7 @@ class RoClimateArea:
         return path
 
     def to_zip(self, path: str | Path) -> Path:
-        """Write a cache-format zip archive and return its path."""
+        """Write a zip archive and return its path."""
         return write_archive(Path(path), self.data, self.metadata())
 
     def metadata(self) -> dict:

@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from . import grid
-from .cache import write_archive
+from .archive import write_archive
 from .exceptions import (
     InvalidTimeRangeError,
     NoDataError,
@@ -48,8 +48,6 @@ class RoClimatePoint:
         store_url: str,
         item_url: str | None = None,
         warnings: Iterable[str] = (),
-        from_cache: bool = False,
-        cache_path: Path | None = None,
         retrieved_at: str | datetime | None = None,
     ) -> None:
         """Create a point time series.
@@ -72,8 +70,6 @@ class RoClimatePoint:
         self.store_url = store_url
         self.item_url = item_url
         self.warnings = tuple(warnings)
-        self.from_cache = bool(from_cache)
-        self.cache_path = Path(cache_path) if cache_path else None
         self.retrieved_at = retrieved_at
         self.start = pd.Timestamp(data.index.min())
         self.end = pd.Timestamp(data.index.max())
@@ -135,12 +131,11 @@ class RoClimatePoint:
     def __repr__(self) -> str:
         """Return a compact summary of the point and its date range."""
         names = ",".join(v.name for v in self.variables)
-        cache = " cache" if self.from_cache else ""
         return (
             f"RoClimatePoint(lon={self.lon:.4f}, lat={self.lat:.4f}, "
             f"grid=({self.i},{self.j}), "
             f"{self.start.date()}..{self.end.date()}, "
-            f"{len(self)} days, vars=[{names}]{cache})"
+            f"{len(self)} days, vars=[{names}])"
         )
 
     def at(self, date: grid.DateLike) -> pd.Series:
@@ -202,8 +197,6 @@ class RoClimatePoint:
             store_url=self.store_url,
             item_url=self.item_url,
             warnings=self.warnings,
-            from_cache=self.from_cache,
-            cache_path=self.cache_path,
             retrieved_at=self.retrieved_at,
         )
 
@@ -620,7 +613,7 @@ class RoClimatePoint:
         return path
 
     def to_zip(self, path: str | Path) -> Path:
-        """Write a cache-format zip archive and return its path."""
+        """Write a zip archive and return its path."""
         return write_archive(Path(path), self.data, self.metadata())
 
     def metadata(self) -> dict:

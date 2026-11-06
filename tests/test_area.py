@@ -9,7 +9,6 @@ from ro_climate import RoClimate, RoClimateArea, DEFAULT_VARIABLES
 from ro_climate import grid
 from ro_climate.area import column_name, resolve_reductions
 from ro_climate.exceptions import (
-    CacheMissError,
     InvalidTimeRangeError,
     NoDataError,
     NonAdditiveVariableError,
@@ -126,21 +125,18 @@ class FakeGroup:
         return self.arrays[name]
 
 
-def make_client(tmp_path, *, offline=False, cache=True, fill=None):
+def make_client(tmp_path, *, fill=None):
     """Create a fake-backed client that never touches the network."""
 
     client = RoClimate(
         store_url="https://example.invalid/store/",
         discover=False,
-        cache=cache,
-        cache_dir=tmp_path,
-        offline=offline,
+        chunk_cache_dir=tmp_path,
     )
-    if not offline:
-        group = FakeGroup(fill=fill)
-        client._open_group = lambda: group
-        client.frontiers = lambda *, force=False: dict(FRONTIERS)
-        client.test_group = group
+    group = FakeGroup(fill=fill)
+    client._open_group = lambda: group
+    client.frontiers = lambda *, force=False: dict(FRONTIERS)
+    client.test_group = group
     return client
 
 
@@ -483,193 +479,6 @@ def test_area_variable_order_is_stable(tmp_path):
         "precipitation",
     ]
     client.close()
-
-
-def test_area_cache_hit_and_extension(tmp_path):
-    client = make_client(tmp_path)
-    array = client.test_group.arrays["max_temp"]
-
-    first = client.area(
-        bounds=FULL_BOUNDS,
-        start="2020-01-02",
-        end="2020-01-03",
-        variables="max_temp",
-    )
-    assert not first.from_cache
-    assert first.cache_path is not None and first.cache_path.is_file()
-    reads_after_first = len(array.reads)
-    assert reads_after_first > 0
-
-    second = client.area(
-        bounds=FULL_BOUNDS,
-        start="2020-01-02",
-        end="2020-01-03",
-        variables="max_temp",
-    )
-    assert second.from_cache
-    assert second.cache_path == first.cache_path
-    assert len(array.reads) == reads_after_first
-    pd.testing.assert_frame_equal(first.data, second.data, check_freq=False)
-
-    third = client.area(
-        bounds=FULL_BOUNDS,
-        start=START,
-        end="2020-01-05",
-        variables="max_temp",
-    )
-    assert not third.from_cache
-    assert third.cache_path == first.cache_path
-    assert len(third) == N_DAYS
-    assert len(array.reads) > reads_after_first
-    expected = expected_series(variable_data("max_temp"), "mean")
-    np.testing.assert_allclose(
-        third.data["max_temp_mean"].to_numpy(),
-        expected,
-        equal_nan=True,
-    )
-
-    reads_after_extension = len(array.reads)
-    fourth = client.area(
-        bounds=FULL_BOUNDS,
-        start=START,
-        end="2020-01-05",
-        variables="max_temp",
-    )
-    assert fourth.from_cache
-    assert len(array.reads) == reads_after_extension
-
-    info = client.cache_info()
-    assert len(info) == 1
-    row = info.iloc[0]
-    assert row["kind"] == "area"
-    assert row["i0"] == I0
-    assert row["j0"] == J0
-    assert row["reductions"] == "mean"
-    assert row["variables"] == "max_temp"
-    client.close()
-
-
-def test_area_cached_subrange_coverage_is_unknown(tmp_path):
-    client = make_client(tmp_path)
-    full = client.area(
-        bounds=FULL_BOUNDS,
-        start=START,
-        end="2020-01-05",
-        variables="max_temp",
-    )
-    assert not pd.isna(full.coverage.loc["max_temp", "n_valid"])
-
-    sub = client.area(
-        bounds=FULL_BOUNDS,
-        start="2020-01-02",
-        end="2020-01-03",
-        variables="max_temp",
-    )
-    assert sub.from_cache
-    assert len(sub) == 2
-    assert sub.coverage.loc["max_temp", "n_days"] == 2
-    assert pd.isna(sub.coverage.loc["max_temp", "n_valid"])
-    client.close()
-
-
-def test_area_refresh_bypasses_cache(tmp_path):
-    client = make_client(tmp_path)
-    first = client.area(
-        bounds=FULL_BOUNDS,
-        start=START,
-        end="2020-01-05",
-        variables="max_temp",
-    )
-    reads = len(client.test_group.arrays["max_temp"].reads)
-
-    refreshed = client.area(
-        bounds=FULL_BOUNDS,
-        start=START,
-        end="2020-01-05",
-        variables="max_temp",
-        refresh=True,
-    )
-    assert not refreshed.from_cache
-    assert len(client.test_group.arrays["max_temp"].reads) > reads
-    assert refreshed.cache_path == first.cache_path
-    client.close()
-
-
-def test_area_cache_false_writes_nothing(tmp_path):
-    client = make_client(tmp_path, cache=False)
-    area = client.area(
-        bounds=FULL_BOUNDS,
-        start=START,
-        end="2020-01-05",
-        variables="max_temp",
-        cache=False,
-    )
-    assert area.cache_path is None
-    assert list(tmp_path.glob("*.zip")) == []
-    client.close()
-
-
-def test_area_offline_cache_hit_and_miss(tmp_path):
-    online = make_client(tmp_path)
-    online.area(
-        bounds=FULL_BOUNDS,
-        start=START,
-        end="2020-01-05",
-        variables="max_temp",
-    )
-    online.close()
-
-    offline = make_client(tmp_path, offline=True)
-    area = offline.area(
-        bounds=FULL_BOUNDS,
-        start=START,
-        end="2020-01-05",
-        variables="max_temp",
-    )
-    assert area.from_cache
-    assert len(area) == N_DAYS
-
-    sub = offline.area(
-        bounds=FULL_BOUNDS,
-        start="2020-01-02",
-        end="2020-01-03",
-        variables="max_temp",
-    )
-    assert sub.from_cache
-    assert len(sub) == 2
-    assert pd.isna(sub.coverage.loc["max_temp", "n_valid"])
-    offline.close()
-
-    other = make_client(tmp_path / "other", offline=True)
-    with pytest.raises(CacheMissError):
-        other.area(
-            bounds=FULL_BOUNDS,
-            start=START,
-            end="2020-01-05",
-            variables="max_temp",
-        )
-    other.close()
-
-
-def test_area_offline_rejects_partial_coverage(tmp_path):
-    online = make_client(tmp_path)
-    online.area(
-        bounds=FULL_BOUNDS,
-        start="2020-01-02",
-        end="2020-01-03",
-        variables="max_temp",
-    )
-    online.close()
-
-    offline = make_client(tmp_path, offline=True)
-    with pytest.raises(CacheMissError):
-        offline.area(
-            bounds=FULL_BOUNDS,
-            start=START,
-            end="2020-01-05",
-            variables="max_temp",
-        )
-    offline.close()
 
 
 def test_area_object_access_and_statistics(tmp_path):

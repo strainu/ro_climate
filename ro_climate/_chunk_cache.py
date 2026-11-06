@@ -15,6 +15,41 @@ from zarr.storage import Store
 
 from ._store import RequestsStore
 
+DEFAULT_CHUNK_CACHE_MAX_MB = 20_000.0
+CHUNK_CACHE_MAX_MB_ENV = "RO_CLIMATE_CHUNK_CACHE_MAX_MB"
+
+
+def default_chunk_cache_dir() -> Path:
+    """Return the platform-appropriate default chunk-cache root."""
+
+    override = os.environ.get("RO_CLIMATE_CACHE_DIR")
+    if override:
+        return Path(override).expanduser()
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA")
+        if base:
+            return Path(base) / "ro_climate" / "cache"
+    base = os.environ.get("XDG_CACHE_HOME")
+    if base:
+        return Path(base) / "ro_climate"
+    return Path.home() / ".cache" / "ro_climate"
+
+
+def resolve_chunk_cache_max_mb(value: float | None = None) -> float:
+    """Resolve the chunk-cache limit in megabytes.
+
+    Precedence is explicit ``value``, then ``RO_CLIMATE_CHUNK_CACHE_MAX_MB``,
+    then :data:`DEFAULT_CHUNK_CACHE_MAX_MB`. A value of ``0`` means unlimited.
+    """
+
+    if value is None:
+        raw = os.environ.get(CHUNK_CACHE_MAX_MB_ENV)
+        value = DEFAULT_CHUNK_CACHE_MAX_MB if raw is None else float(raw)
+    limit = float(value)
+    if limit < 0:
+        raise ValueError("chunk cache size must be non-negative")
+    return limit
+
 
 class ChunkCache:
     """Store compressed Zarr chunk bytes as individual cache files.
