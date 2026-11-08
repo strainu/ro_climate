@@ -156,8 +156,32 @@ Tests must pass without network access.
    API changes.
 2. Run `python -m pytest -q`.
 3. Verify every function/method has a docstring (AST check).
-4. Remove generated `__pycache__`, `.pytest_cache`, `build/`, and `*.egg-info`.
-5. If packaging metadata changed, run the `pip install --dry-run` check.
+4. Remove generated `__pycache__`, `.pytest_cache`, `build/`, `dist/`, and
+   `*.egg-info`.
+5. If packaging metadata changed, run the `pip install --dry-run` check and
+   rebuild the distributions.
+
+## Packaging and release
+
+The version is single-sourced from `ro_climate.__version__`; `pyproject.toml`
+reads it through `tool.setuptools.dynamic`. Bump that string, add a
+`CHANGELOG.md` entry, and tag `vX.Y.Z`.
+
+Local validation before publishing:
+
+```bash
+python -m pip install -e ".[dev]"
+python -m pytest -q
+python -m build
+python -m twine check --strict dist/*
+```
+
+Publishing is handled by `.github/workflows/publish.yml` on a published GitHub
+release, using PyPI Trusted Publishing. Configure the `pypi` environment and
+the trusted publisher on PyPI before creating the release.
+
+The source code is MIT-licensed. The ANM data remains CC BY 4.0 and must keep
+its attribution in exports and derived products.
 
 ## Known pitfalls
 

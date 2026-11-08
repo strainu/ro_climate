@@ -631,8 +631,14 @@ def test_area_object_access_and_statistics(tmp_path):
     )
 
     assert len(area) == N_DAYS
-    assert area.series("max_temp", "mean") is area.data["max_temp_mean"]
-    assert area["max_temp_mean"] is area.data["max_temp_mean"]
+    pd.testing.assert_series_equal(
+        area.series("max_temp", "mean"),
+        area.data["max_temp_mean"],
+    )
+    pd.testing.assert_series_equal(
+        area["max_temp_mean"],
+        area.data["max_temp_mean"],
+    )
     selected = area[["max_temp_mean", "precipitation_mean"]]
     assert list(selected.columns) == [
         "max_temp_mean",

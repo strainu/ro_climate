@@ -445,7 +445,7 @@ class RoClimatePoint:
             key = self.data.index.month
             index_name = "month"
         elif freq in {"dayofyear", "doy"}:
-            key = self.data.index.dayofyear
+            key = self.data.index.day_of_year
             index_name = "dayofyear"
         else:
             raise ValueError("freq must be 'month' or 'dayofyear'")

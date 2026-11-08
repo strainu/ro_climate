@@ -1,28 +1,42 @@
 # ro-climate — ANM daily gridded meteorology
 
+[![PyPI](https://img.shields.io/pypi/v/ro-climate.svg)](https://pypi.org/project/ro-climate/)
+[![Python versions](https://img.shields.io/pypi/pyversions/ro-climate.svg)](https://pypi.org/project/ro-climate/)
+[![CI](https://github.com/strainu/ro_climate/actions/workflows/ci.yml/badge.svg)](https://github.com/strainu/ro_climate/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/strainu/ro_climate/blob/main/LICENSE)
+
 `ro-climate` is a small, object-oriented Python client for the public **ANM
 daily gridded meteorological cube** for Romania. It reads single grid cells or
 rectangular/polygon areas for an optional date range, returns pandas time
 series or daily spatial summaries, and provides statistics, time aggregation,
 climate indices, exports, and a local chunk cache.
 
-- Store: `https://storage.svc.uvt-01.eocube.ro/meteo/cube/open-v1/`
-- STAC item: `https://stac.eocube.ro/collections/anm-daily-grids/items/anm-daily-grids-open-v1`
+- Source code: <https://github.com/strainu/ro_climate>
+- Issue tracker: <https://github.com/strainu/ro_climate/issues>
+- Changelog: [CHANGELOG.md](https://github.com/strainu/ro_climate/blob/main/CHANGELOG.md)
+- Store: <https://storage.svc.uvt-01.eocube.ro/meteo/cube/open-v1/>
+- STAC item: <https://stac.eocube.ro/collections/anm-daily-grids/items/anm-daily-grids-open-v1>
 - Variables: `max_temp` (°C), `min_temp` (°C), `precipitation` (mm)
 - Data licence: CC BY 4.0
 
-Data © Administrația Națională de Meteorologie (MeteoRomania), via
-data.gov.ro; cube assembly and hosting by West University of Timișoara
-(ROCS / EOCube.RO).
+> **Data attribution.** The data are published by Administrația Națională de
+> Meteorologie (MeteoRomania), via data.gov.ro, under CC BY 4.0; cube assembly
+> and hosting are by West University of Timișoara (ROCS / EOCube.RO). Any
+> publication using the data must preserve this attribution.
 
 ## Installation
 
-From this directory:
+`ro-climate` requires Python 3.10 or newer.
 
 ```bash
-python -m pip install -e .
-# with test tools
-python -m pip install -e ".[test]"
+python -m pip install ro-climate
+```
+
+For development, install the test and release tools as well:
+
+```bash
+python -m pip install -e ".[dev]"   # pytest, build, twine
+python -m pip install -e ".[test]"  # pytest only
 ```
 
 Runtime dependencies are deliberately small: `zarr` (v2), `numpy`, `pandas`,
@@ -454,3 +468,32 @@ The tests use a synthetic in-memory group and never contact the network.
 They cover grid mapping, statistics, resampling, indices, area summaries and
 polygon masks, chunk-aligned reads, the raw chunk cache, the requests-backed
 store, client fetching, and export archives.
+
+## Licence
+
+The **source code** of `ro-climate` is released under the [MIT License](https://github.com/strainu/ro_climate/blob/main/LICENSE).
+
+The **ANM data** accessed through the library are published under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The software
+licence does not replace or relax the data licence. When you redistribute
+data obtained through this library, keep the attribution and licence notice
+in the exported metadata and README files.
+
+## Citation
+
+If you use the data in a publication, cite the data provider and describe the
+dataset, for example:
+
+> Administrația Națională de Meteorologie (ANM), *ANM daily gridded
+> meteorological cube*, CC BY 4.0, via data.gov.ro; cube assembly and hosting
+> by West University of Timișoara (ROCS / EOCube.RO).
+
+If you use the library itself, you may also link to
+<https://github.com/strainu/ro_climate>.
+
+## Contributing
+
+Bug reports and pull requests are welcome at
+<https://github.com/strainu/ro_climate/issues>. Run `python -m pytest -q`
+before opening a pull request. Tests must remain offline: use synthetic data
+and fake HTTP sessions rather than live downloads.
