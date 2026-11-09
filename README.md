@@ -1,28 +1,36 @@
-# ro-climate — ANM daily gridded meteorology
+# ro-climate — ANM daily gridded and station meteorology
 
 [![PyPI](https://img.shields.io/pypi/v/ro-climate.svg)](https://pypi.org/project/ro-climate/)
 [![Python versions](https://img.shields.io/pypi/pyversions/ro-climate.svg)](https://pypi.org/project/ro-climate/)
 [![CI](https://github.com/strainu/ro_climate/actions/workflows/ci.yml/badge.svg)](https://github.com/strainu/ro_climate/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/strainu/ro_climate/blob/main/LICENSE)
 
-`ro-climate` is a small, object-oriented Python client for the public **ANM
-daily gridded meteorological cube** for Romania. It reads single grid cells or
-rectangular/polygon areas for an optional date range, returns pandas time
-series or daily spatial summaries, and provides statistics, time aggregation,
-climate indices, exports, and a local chunk cache.
+`ro-climate` is a small, object-oriented Python client for public **ANM daily
+climate data** for Romania. It reads the official daily gridded cube for single
+points and rectangular/polygon areas, and it loads daily observations from the
+**160 official station series published through the ANM Open Data Portal
+(ODP)**. Both sources return pandas time series with statistics, time
+aggregation, climate indices, and exports; the gridded cube also has a local
+chunk cache.
 
 - Source code: <https://github.com/strainu/ro_climate>
 - Issue tracker: <https://github.com/strainu/ro_climate/issues>
 - Changelog: [CHANGELOG.md](https://github.com/strainu/ro_climate/blob/main/CHANGELOG.md)
-- Store: <https://storage.svc.uvt-01.eocube.ro/meteo/cube/open-v1/>
+- Gridded store: <https://storage.svc.uvt-01.eocube.ro/meteo/cube/open-v1/>
 - STAC item: <https://stac.eocube.ro/collections/anm-daily-grids/items/anm-daily-grids-open-v1>
-- Variables: `max_temp` (°C), `min_temp` (°C), `precipitation` (mm)
+- Station archive: <https://odp.meteoromania.ro/station_data_series/climate/daily/>
+- Gridded variables: `max_temp` (°C), `min_temp` (°C), `precipitation` (mm)
+- Station variables: `max_temp` (`tx`, °C), `min_temp` (`tn`, °C),
+  `precipitation` (`r`, mm), `mean_temp` (`ta`, °C), `wind_speed` (`ff`, m/s),
+  `pressure` (`p`, hPa)
 - Data licence: CC BY 4.0
 
 > **Data attribution.** The data are published by Administrația Națională de
-> Meteorologie (MeteoRomania), via data.gov.ro, under CC BY 4.0; cube assembly
-> and hosting are by West University of Timișoara (ROCS / EOCube.RO). Any
-> publication using the data must preserve this attribution.
+> Meteorologie (MeteoRomania) under CC BY 4.0. Gridded data are distributed via
+> data.gov.ro, with cube assembly and hosting by West University of Timișoara
+> (ROCS / EOCube.RO). Station observations are distributed through the ANM Open
+> Data Portal (ODP), <https://odp.meteoromania.ro/>. Any publication using the
+> data must preserve this attribution.
 
 ## Installation
 
@@ -58,6 +66,23 @@ with RoClimate() as client:
     print(point.mean())                 # mean of each variable
     print(point.max("max_temp"))        # hottest day in the period
     print(point.sum("precipitation"))   # total precipitation
+```
+
+Official station observations come from ODP and need no API key:
+
+```python
+from ro_climate import load_station_series
+
+station = load_station_series(
+    "15014",                       # Baia Mare; names such as "Baia Mare" work too
+    start="2020-01-01",
+    end="2020-12-31",
+    variables=("tx", "tn", "r"),   # ODP codes or public names
+)
+print(station)
+print(station.mean())
+print(station.sum())
+station.to_csv("baia_mare_2020.csv")
 ```
 
 > **Performance note.** The cube stores 90-day × 161-row × 324-column chunks,
@@ -350,9 +375,114 @@ variables must be loaded with the default `mean` reduction.
 Area summaries are not stored. Each call reads the chunks intersecting the
 selected cells and computes the requested reductions.
 
+## Station observations (ODP)
+
+The ANM Open Data Portal publishes daily, quality-controlled station series for
+160 stations. The library ships a static catalog derived from the official WFS
+station metadata, so catalog searches need no network access.
+
+### Catalog
+
+```python
+from ro_climate import (
+    get_station,
+    list_stations,
+    nearest_station,
+    nearest_stations,
+)
+
+stations = list_stations()              # 160 Station objects
+baia = get_station("15014")            # WMO identifier, int, or name
+baia = get_station("Baia Mare")        # case/accent/punctuation-insensitive
+print(baia.name, baia.latitude, baia.longitude, baia.kind)
+
+ranked = nearest_stations(26.1025, 44.4325, 5)
+# [(Station, distance_km), ...], sorted by distance
+nearest = nearest_station(26.1025, 44.4325)
+```
+
+`Station` exposes `.wmo`, `.name`, `.latitude`, `.longitude`, `.kind`, `.id`,
+`.label`, and `.distance_km(lon, lat)`.
+
+### Loading a series
+
+```python
+series = load_station_series(
+    "15422",
+    start="2010-01-01",
+    end="2020-12-31",
+    variables=("tx", "tn", "r"),
+)
+```
+
+- `variables` accepts public names (`max_temp`, `min_temp`, `precipitation`,
+  `mean_temp`, `wind_speed`, `pressure`) and ODP codes (`tx`, `tn`, `r`, `ta`,
+  `ff`, `p`). Columns always use public names.
+- The default is `max_temp`, `min_temp`, `precipitation`, mirroring the point
+  API.
+- Default `start` is 1961-01-01. Default `end` is today, clamped with a warning
+  if later.
+- The returned series starts at the first and ends at the last valid
+  observation inside the requested range. Internal missing days are kept as
+  `NaN` rows, so resampling and rolling indices remain correct.
+- `RoClimateStation` mirrors `RoClimatePoint`: `.data`, `.variables`, `.units`,
+  `.start`, `.end`, `.coverage`, `.warnings`, `.at()`, `.subset()`, statistics,
+  resampling, climatologies, climate indices, `aggregate()`, and the CSV, JSON,
+  NPZ and zip exports. `.tmean` uses the ODP `ta` observation when `mean_temp`
+  is loaded; otherwise it is `(max_temp + min_temp) / 2`.
+
+### Missing values and trace precipitation
+
+ODP files use `-999` for missing observations. The loader converts `-999` to
+`NaN` in every variable. A precipitation value of `-1` is **not** missing: it
+means trace precipitation, less than 0.05 mm. Trace days are stored as `0.0`
+in the numerical precipitation column so totals and means are correct, and the
+distinction is preserved in `series.precipitation_trace`:
+
+```python
+trace_days = series.precipitation_trace
+print(trace_days.sum())
+```
+
+The raw and stored sentinel values, plus the number of trace days, are recorded
+in `series.metadata()`.
+
+### Station cache
+
+Station archives are cached as
+`<cache root>/stations/<wmo>/<year>.zip`. Completed past years are immutable;
+the current year is refreshed after one hour by default. If a download fails
+and a stale archive exists, the stale archive is used and a warning is added to
+the result.
+
+```python
+from ro_climate import clear_station_cache, default_station_cache_dir
+
+print(default_station_cache_dir())
+series = load_station_series(
+    "15014", start="2020-01-01", end="2020-12-31"
+)
+clear_station_cache()          # remove every cached station archive
+```
+
+Use `cache_dir=` to override the station-cache root, `cache_ttl=` or
+`RO_CLIMATE_STATION_CACHE_TTL` to change the current-year TTL, and
+`refresh=True` to refetch archives.
+
+### Command line
+
+```bash
+python -m ro_climate.stations --list
+python -m ro_climate.stations --list --kind meteorological --json
+python -m ro_climate.stations --near 26.1025 44.4325 --limit 5
+python -m ro_climate.stations --near 26.1025 44.4325 --json
+```
+
+`--near` takes **longitude** then **latitude**, matching the Python API.
+
 ## Local chunk cache
 
-The only cache is the raw compressed Zarr chunk cache, enabled by default:
+The gridded cube uses the raw compressed Zarr chunk cache, enabled by default:
 
 ```python
 client = RoClimate(
@@ -424,6 +554,31 @@ pandas, so override `float_format` or use `sep=";"` as needed.
 - `.chunk_cache_info()`, `.clear_cache()`, `.prune_cache(older_than_days=30)`
 - Context manager and `.close()`
 
+Station catalog and loading
+
+- `list_stations(kind=None) -> list[Station]`
+- `get_station(identifier) -> Station`
+- `nearest_stations(lon, lat, n=5, *, max_distance_km=None, kind=None)
+  -> list[tuple[Station, float]]`
+- `nearest_station(lon, lat, *, max_distance_km=None, kind=None) -> Station`
+- `load_station_series(station, start=None, end=None, variables=None, *,
+  cache_dir=None, cache_ttl=None, refresh=False, timeout=60.0, session=None)
+  -> RoClimateStation`
+- `default_station_cache_dir()`, `clear_station_cache(cache_dir=None)`
+- `ODP_BASE_URL`
+- CLI: `python -m ro_climate.stations --list|--near [--json]`
+
+`RoClimateStation`
+
+- Access: `.data`, `.variables`, `.units`, `.station`, `.wmo`, `.name`,
+  `.latitude`, `.longitude`, `.kind`, `.lon`, `.lat`, `.start`, `.end`,
+  `.frontiers`, `.coverage`, `.precipitation_trace`, `.warnings`,
+  `.source_url`
+- Selection: `.at(date)`, `.subset(...)`, `station["max_temp"]`,
+  `station[["max_temp", "precipitation"]]`
+- Statistics, aggregation, indices, derived values, and exports match
+  `RoClimatePoint`; `.tmean` prefers `mean_temp` (`ta`) when loaded
+
 `RoClimatePoint`
 
 - Access: `.data`, `.variables`, `.units`, `.start`, `.end`, `.i`, `.j`,
@@ -464,10 +619,12 @@ From this directory:
 python -m pytest
 ```
 
-The tests use a synthetic in-memory group and never contact the network.
-They cover grid mapping, statistics, resampling, indices, area summaries and
-polygon masks, chunk-aligned reads, the raw chunk cache, the requests-backed
-store, client fetching, and export archives.
+The tests use synthetic in-memory data, synthetic ODP ZIP archives, and fake
+HTTP sessions; they never contact the network. They cover grid mapping,
+statistics, resampling, indices, area summaries and polygon masks,
+chunk-aligned reads, the raw chunk cache, the requests-backed store, client
+fetching, station catalog lookup, ODP parsing and sentinels, station caching,
+and export archives.
 
 ## Licence
 
@@ -487,6 +644,12 @@ dataset, for example:
 > Administrația Națională de Meteorologie (ANM), *ANM daily gridded
 > meteorological cube*, CC BY 4.0, via data.gov.ro; cube assembly and hosting
 > by West University of Timișoara (ROCS / EOCube.RO).
+
+For station observations, cite the provider and the distribution channel:
+
+> Administrația Națională de Meteorologie (ANM), *Daily climate station
+> observations*, CC BY 4.0, via the ANM Open Data Portal (ODP),
+> <https://odp.meteoromania.ro/>.
 
 If you use the library itself, you may also link to
 <https://github.com/strainu/ro_climate>.

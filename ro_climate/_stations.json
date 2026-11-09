@@ -1,0 +1,1122 @@
+[
+  {
+    "wmo": "15000",
+    "name": "Dărăbani",
+    "latitude": 48.19,
+    "longitude": 26.5735,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15004",
+    "name": "Sighetul Marmației",
+    "latitude": 47.9393,
+    "longitude": 23.9043,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15007",
+    "name": "Rădăuți",
+    "latitude": 47.8379,
+    "longitude": 25.8904,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15010",
+    "name": "Satu Mare",
+    "latitude": 47.7215,
+    "longitude": 22.8871,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15014",
+    "name": "Baia Mare",
+    "latitude": 47.6608,
+    "longitude": 23.4733,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15015",
+    "name": "Ocna Șugatag",
+    "latitude": 47.7771,
+    "longitude": 23.9405,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15020",
+    "name": "Botoșani",
+    "latitude": 47.7357,
+    "longitude": 26.6456,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15023",
+    "name": "Suceava",
+    "latitude": 47.6329,
+    "longitude": 26.2406,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15025",
+    "name": "Stânca Ștefănești",
+    "latitude": 47.8323,
+    "longitude": 27.2197,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15033",
+    "name": "Iezer",
+    "latitude": 47.6026,
+    "longitude": 24.649,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15042",
+    "name": "Săcuieni",
+    "latitude": 47.3442,
+    "longitude": 22.0945,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15044",
+    "name": "Supuru de Jos",
+    "latitude": 47.4551,
+    "longitude": 22.7836,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15047",
+    "name": "Târgu Lăpuș",
+    "latitude": 47.4396,
+    "longitude": 23.8722,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15056",
+    "name": "Cotnari",
+    "latitude": 47.3583,
+    "longitude": 26.9256,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15063",
+    "name": "Zalău",
+    "latitude": 47.1949,
+    "longitude": 23.0467,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15069",
+    "name": "Poiana Stampei",
+    "latitude": 47.3247,
+    "longitude": 25.1345,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15073",
+    "name": "Târgu Neamț",
+    "latitude": 47.2121,
+    "longitude": 26.3792,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15080",
+    "name": "Oradea",
+    "latitude": 47.0357,
+    "longitude": 21.8959,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15083",
+    "name": "Dej",
+    "latitude": 47.128,
+    "longitude": 23.8989,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15085",
+    "name": "Bistrița",
+    "latitude": 47.1491,
+    "longitude": 24.514,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15088",
+    "name": "Călimani Rețitiș",
+    "latitude": 47.0979,
+    "longitude": 25.2462,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15090",
+    "name": "Iași",
+    "latitude": 47.1633,
+    "longitude": 27.6272,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15094",
+    "name": "Bârnova",
+    "latitude": 47.0124,
+    "longitude": 27.5826,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15095",
+    "name": "Borod",
+    "latitude": 46.9937,
+    "longitude": 22.5902,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15099",
+    "name": "Huedin",
+    "latitude": 46.8573,
+    "longitude": 23.0325,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15107",
+    "name": "Toplița",
+    "latitude": 46.9264,
+    "longitude": 25.3599,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15108",
+    "name": "Ceahlău Toaca",
+    "latitude": 46.9775,
+    "longitude": 25.9499,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15109",
+    "name": "Piatra Neamț",
+    "latitude": 46.9337,
+    "longitude": 26.3895,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15111",
+    "name": "Roman",
+    "latitude": 46.9691,
+    "longitude": 26.9118,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15113",
+    "name": "Negrești",
+    "latitude": 46.8381,
+    "longitude": 27.4421,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15117",
+    "name": "Holod",
+    "latitude": 46.7886,
+    "longitude": 22.1123,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15118",
+    "name": "Stâna de Vale",
+    "latitude": 46.6898,
+    "longitude": 22.6234,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15119",
+    "name": "Vlădeasa 1800",
+    "latitude": 46.7593,
+    "longitude": 22.7942,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15120",
+    "name": "Cluj-Napoca",
+    "latitude": 46.7778,
+    "longitude": 23.5713,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15123",
+    "name": "Sărmașu",
+    "latitude": 46.7476,
+    "longitude": 24.1598,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15124",
+    "name": "Batoș",
+    "latitude": 46.8862,
+    "longitude": 24.6454,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15127",
+    "name": "Joseni",
+    "latitude": 46.7057,
+    "longitude": 25.5126,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15136",
+    "name": "Chișineu-Criș",
+    "latitude": 46.5185,
+    "longitude": 21.5417,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15138",
+    "name": "Dumbrăvița de Codru",
+    "latitude": 46.6446,
+    "longitude": 22.1712,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15143",
+    "name": "Turda",
+    "latitude": 46.583,
+    "longitude": 23.7912,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15145",
+    "name": "Târgu-Mureș",
+    "latitude": 46.5281,
+    "longitude": 24.5225,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15148",
+    "name": "Bucin",
+    "latitude": 46.649,
+    "longitude": 25.2965,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15150",
+    "name": "Bacău",
+    "latitude": 46.5578,
+    "longitude": 26.8967,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15154",
+    "name": "Vaslui",
+    "latitude": 46.6461,
+    "longitude": 27.7144,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15160",
+    "name": "Ștei",
+    "latitude": 46.528,
+    "longitude": 22.4665,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15162",
+    "name": "Câmpeni",
+    "latitude": 46.3638,
+    "longitude": 23.0404,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15163",
+    "name": "Băișoara",
+    "latitude": 46.5355,
+    "longitude": 23.3102,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15165",
+    "name": "Târnăveni",
+    "latitude": 46.3601,
+    "longitude": 24.226,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15168",
+    "name": "Odorheiul Secuiesc",
+    "latitude": 46.2968,
+    "longitude": 25.2918,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15170",
+    "name": "Miercurea Ciuc",
+    "latitude": 46.3713,
+    "longitude": 25.7726,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15179",
+    "name": "Șiria",
+    "latitude": 46.2649,
+    "longitude": 21.6628,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15182",
+    "name": "Gurahonț",
+    "latitude": 46.2792,
+    "longitude": 22.3333,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15184",
+    "name": "Roșia Montană",
+    "latitude": 46.3176,
+    "longitude": 23.139,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15189",
+    "name": "Dumbrăveni",
+    "latitude": 46.2279,
+    "longitude": 24.5916,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15194",
+    "name": "Târgu Ocna",
+    "latitude": 46.2727,
+    "longitude": 26.641,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15197",
+    "name": "Bârlad",
+    "latitude": 46.2331,
+    "longitude": 27.6444,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15199",
+    "name": "Sânnicolau Mare",
+    "latitude": 46.0713,
+    "longitude": 20.6016,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15200",
+    "name": "Arad",
+    "latitude": 46.1335,
+    "longitude": 21.3536,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15204",
+    "name": "Vărădia de Mureș",
+    "latitude": 46.0192,
+    "longitude": 22.151,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15206",
+    "name": "Țebea",
+    "latitude": 46.1695,
+    "longitude": 22.7262,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15208",
+    "name": "Alba iulia",
+    "latitude": 46.0639,
+    "longitude": 23.5634,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15209",
+    "name": "Blaj",
+    "latitude": 46.1784,
+    "longitude": 23.9352,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15215",
+    "name": "Baraolt",
+    "latitude": 46.0808,
+    "longitude": 25.5958,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15217",
+    "name": "Târgu Secuiesc",
+    "latitude": 45.9929,
+    "longitude": 26.1151,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15219",
+    "name": "Adjud",
+    "latitude": 46.1047,
+    "longitude": 27.1704,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15230",
+    "name": "Deva",
+    "latitude": 45.8649,
+    "longitude": 22.8988,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15231",
+    "name": "Sebeș-Alba",
+    "latitude": 45.9636,
+    "longitude": 23.5331,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15235",
+    "name": "Făgăraș",
+    "latitude": 45.8363,
+    "longitude": 24.9353,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15238",
+    "name": "Sfântu Gheorghe Covasna",
+    "latitude": 45.8716,
+    "longitude": 25.8021,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15245",
+    "name": "Jimbolia",
+    "latitude": 45.7809,
+    "longitude": 20.7024,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15247",
+    "name": "Timișoara",
+    "latitude": 45.7711,
+    "longitude": 21.2581,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15254",
+    "name": "Păltiniș Sibiu",
+    "latitude": 45.6571,
+    "longitude": 23.9324,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15260",
+    "name": "Sibiu",
+    "latitude": 45.7893,
+    "longitude": 24.0914,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15261",
+    "name": "Întorsura Buzăului",
+    "latitude": 45.6683,
+    "longitude": 26.0568,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15262",
+    "name": "Lăcăuți",
+    "latitude": 45.8239,
+    "longitude": 26.3756,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15264",
+    "name": "Focșani",
+    "latitude": 45.6875,
+    "longitude": 27.1998,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15265",
+    "name": "Tecuci",
+    "latitude": 45.8416,
+    "longitude": 27.409,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15270",
+    "name": "Lugoj",
+    "latitude": 45.6865,
+    "longitude": 21.9333,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15277",
+    "name": "Boița",
+    "latitude": 45.653,
+    "longitude": 24.2716,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15279",
+    "name": "Bâlea Lac",
+    "latitude": 45.6039,
+    "longitude": 24.6148,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15280",
+    "name": "Vârful Omu",
+    "latitude": 45.4458,
+    "longitude": 25.4567,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15284",
+    "name": "Penteleu",
+    "latitude": 45.6027,
+    "longitude": 26.4098,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15285",
+    "name": "Bisoca",
+    "latitude": 45.5489,
+    "longitude": 26.7103,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15289",
+    "name": "Banloc",
+    "latitude": 45.3827,
+    "longitude": 21.1364,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15292",
+    "name": "Caransebeș",
+    "latitude": 45.4167,
+    "longitude": 22.2292,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15296",
+    "name": "Petroșani",
+    "latitude": 45.4063,
+    "longitude": 23.3767,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15297",
+    "name": "Obârșia Lotrului",
+    "latitude": 45.4355,
+    "longitude": 23.6308,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15300",
+    "name": "Brașov-Ghimbav",
+    "latitude": 45.6959,
+    "longitude": 25.5262,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15301",
+    "name": "Fundata",
+    "latitude": 45.4315,
+    "longitude": 25.2715,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15302",
+    "name": "Predeal",
+    "latitude": 45.5063,
+    "longitude": 25.5835,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15307",
+    "name": "Râmnicu Sărat",
+    "latitude": 45.3906,
+    "longitude": 27.0385,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15310",
+    "name": "Galați",
+    "latitude": 45.4729,
+    "longitude": 28.0323,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15314",
+    "name": "Reșița",
+    "latitude": 45.3144,
+    "longitude": 21.887,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15315",
+    "name": "Semenic",
+    "latitude": 45.1814,
+    "longitude": 22.0558,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15316",
+    "name": "Cuntu",
+    "latitude": 45.3005,
+    "longitude": 22.5015,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15317",
+    "name": "Țarcu",
+    "latitude": 45.281,
+    "longitude": 22.5327,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15319",
+    "name": "Voineasa",
+    "latitude": 45.4112,
+    "longitude": 23.967,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15320",
+    "name": "Parâng",
+    "latitude": 45.3874,
+    "longitude": 23.4631,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15324",
+    "name": "Câmpulung Muscel",
+    "latitude": 45.2748,
+    "longitude": 25.0366,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15325",
+    "name": "Sinaia 1500",
+    "latitude": 45.355,
+    "longitude": 25.5142,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15328",
+    "name": "Pătârlagele",
+    "latitude": 45.3247,
+    "longitude": 26.3695,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15333",
+    "name": "Brăila",
+    "latitude": 45.2066,
+    "longitude": 27.9197,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15335",
+    "name": "Tulcea",
+    "latitude": 45.1905,
+    "longitude": 28.8242,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15336",
+    "name": "Gorgova",
+    "latitude": 45.1761,
+    "longitude": 29.1515,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15337",
+    "name": "Mahmudia",
+    "latitude": 45.0872,
+    "longitude": 29.0734,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15338",
+    "name": "Oravița",
+    "latitude": 45.0387,
+    "longitude": 21.7105,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15340",
+    "name": "Tîrgu-Jiu",
+    "latitude": 45.0406,
+    "longitude": 23.2603,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15341",
+    "name": "Apa Neagră",
+    "latitude": 44.9968,
+    "longitude": 22.8595,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15343",
+    "name": "Horezu",
+    "latitude": 45.2552,
+    "longitude": 23.9482,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15344",
+    "name": "Polovragi",
+    "latitude": 45.1655,
+    "longitude": 23.8086,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15345",
+    "name": "Morărești",
+    "latitude": 45.0163,
+    "longitude": 24.5701,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15346",
+    "name": "Râmnicu Vâlcea",
+    "latitude": 45.0888,
+    "longitude": 24.3628,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15347",
+    "name": "Curtea de Argeș",
+    "latitude": 45.1788,
+    "longitude": 24.6697,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15349",
+    "name": "Câmpina",
+    "latitude": 45.1437,
+    "longitude": 25.7334,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15350",
+    "name": "Buzău",
+    "latitude": 45.1327,
+    "longitude": 26.8517,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15360",
+    "name": "Sulina",
+    "latitude": 45.1623,
+    "longitude": 29.72,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15364",
+    "name": "Bozovici",
+    "latitude": 44.9183,
+    "longitude": 22.0062,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15366",
+    "name": "Băile Herculane",
+    "latitude": 44.881,
+    "longitude": 22.4164,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15369",
+    "name": "Târgu Logrești",
+    "latitude": 44.8781,
+    "longitude": 23.7087,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15373",
+    "name": "Pitești",
+    "latitude": 44.8489,
+    "longitude": 24.866,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15375",
+    "name": "Târgoviște",
+    "latitude": 44.9297,
+    "longitude": 25.4278,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15377",
+    "name": "Ploiești",
+    "latitude": 44.9558,
+    "longitude": 25.9874,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15387",
+    "name": "Sfântu Gheorghe Delta",
+    "latitude": 44.8976,
+    "longitude": 29.5991,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15388",
+    "name": "Moldova Veche",
+    "latitude": 44.7224,
+    "longitude": 21.6333,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15395",
+    "name": "Drăgășani",
+    "latitude": 44.6654,
+    "longitude": 24.2372,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15402",
+    "name": "Urziceni",
+    "latitude": 44.7217,
+    "longitude": 26.6572,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15405",
+    "name": "Grivița",
+    "latitude": 44.7408,
+    "longitude": 27.2946,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15406",
+    "name": "Hârșova",
+    "latitude": 44.6917,
+    "longitude": 27.9635,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15408",
+    "name": "Corugea",
+    "latitude": 44.7343,
+    "longitude": 28.342,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15409",
+    "name": "Jurilovca",
+    "latitude": 44.7661,
+    "longitude": 28.8764,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15410",
+    "name": "Drobeta-Turnu Severin",
+    "latitude": 44.6265,
+    "longitude": 22.6261,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15412",
+    "name": "Bâcleș",
+    "latitude": 44.4762,
+    "longitude": 23.1131,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15416",
+    "name": "Stolnici",
+    "latitude": 44.5627,
+    "longitude": 24.7898,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15419",
+    "name": "Titu",
+    "latitude": 44.6529,
+    "longitude": 25.5792,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15420",
+    "name": "București Băneasa",
+    "latitude": 44.5104,
+    "longitude": 26.0782,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15421",
+    "name": "București Afumați",
+    "latitude": 44.5001,
+    "longitude": 26.2128,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15422",
+    "name": "București Filaret",
+    "latitude": 44.4121,
+    "longitude": 26.0938,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15425",
+    "name": "Slobozia",
+    "latitude": 44.5528,
+    "longitude": 27.3836,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15428",
+    "name": "Gura Portiței",
+    "latitude": 44.6898,
+    "longitude": 28.999,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15434",
+    "name": "Slatina",
+    "latitude": 44.4422,
+    "longitude": 24.3545,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15444",
+    "name": "Fetești",
+    "latitude": 44.3915,
+    "longitude": 27.839,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15445",
+    "name": "Cernavodă",
+    "latitude": 44.3456,
+    "longitude": 28.0437,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15450",
+    "name": "Craiova",
+    "latitude": 44.3101,
+    "longitude": 23.867,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15455",
+    "name": "Videle",
+    "latitude": 44.2829,
+    "longitude": 25.537,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15460",
+    "name": "Călărași",
+    "latitude": 44.2057,
+    "longitude": 27.3383,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15462",
+    "name": "Medgidia",
+    "latitude": 44.2432,
+    "longitude": 28.2514,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15465",
+    "name": "Băilești",
+    "latitude": 44.0293,
+    "longitude": 23.3312,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15469",
+    "name": "Caracal",
+    "latitude": 44.1001,
+    "longitude": 24.3573,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15470",
+    "name": "Roșiorii de Vede",
+    "latitude": 44.1072,
+    "longitude": 24.9787,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15475",
+    "name": "Oltenița",
+    "latitude": 44.0747,
+    "longitude": 26.6371,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15479",
+    "name": "Adamclisi",
+    "latitude": 44.0883,
+    "longitude": 27.9656,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15480",
+    "name": "Constanța",
+    "latitude": 44.2138,
+    "longitude": 28.6456,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15482",
+    "name": "Calafat",
+    "latitude": 43.9849,
+    "longitude": 22.9461,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15483",
+    "name": "Constanța Dig",
+    "latitude": 44.2197,
+    "longitude": 28.649,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15489",
+    "name": "Alexandria",
+    "latitude": 43.9779,
+    "longitude": 25.3528,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15490",
+    "name": "Turnu-Măgurele",
+    "latitude": 43.7603,
+    "longitude": 24.8783,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15491",
+    "name": "Giurgiu",
+    "latitude": 43.8752,
+    "longitude": 25.9327,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15494",
+    "name": "Bechet",
+    "latitude": 43.7897,
+    "longitude": 23.9442,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15498",
+    "name": "Zimnicea",
+    "latitude": 43.6615,
+    "longitude": 25.3536,
+    "kind": "meteorological"
+  },
+  {
+    "wmo": "15499",
+    "name": "Mangalia",
+    "latitude": 43.8161,
+    "longitude": 28.5875,
+    "kind": "meteorological"
+  }
+]

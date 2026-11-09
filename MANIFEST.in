@@ -1,4 +1,5 @@
 include LICENSE
 include README.md
 include CHANGELOG.md
+recursive-include ro_climate *.json
 recursive-include tests *.py

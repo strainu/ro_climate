@@ -27,3 +27,7 @@ class NonAdditiveVariableError(RoClimateError, ValueError):
 
 class StoreUnavailableError(RoClimateError):
     """The remote Zarr store could not be reached or read."""
+
+
+class StationNotFoundError(RoClimateError, LookupError):
+    """The requested ANM station is not part of the packaged catalog."""

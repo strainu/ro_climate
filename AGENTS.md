@@ -4,7 +4,8 @@
 
 `ro-climate` (import name `ro_climate`) is a standalone Python library for
 point time series and area summaries from the public **ANM daily gridded
-meteorological cube** for Romania.
+meteorological cube** for Romania, plus official daily **station observations
+from the ANM Open Data Portal (ODP)**.
 
 Work only inside this `meteo/` directory. Do not navigate to, import from, or
 depend on the parent `pywikibot` checkout.
@@ -14,7 +15,7 @@ depend on the parent `pywikibot` checkout.
 - Distribution: `ro-climate`
 - Package/import: `ro_climate`
 - Public classes: `RoClimate`, `RoClimatePoint`, `RoClimateArea`,
-  `RoClimateError`
+  `RoClimateStation`, `Station`, `RoClimateError`
 
 ## Setup and verification
 
@@ -53,6 +54,8 @@ Tests must pass without network access.
 | `ro_climate/client.py` | `RoClimate`: STAC discovery, Zarr access, frontiers, point/area loading |
 | `ro_climate/point.py` | `RoClimatePoint`: data access, statistics, resampling, indices, exports |
 | `ro_climate/area.py` | `RoClimateArea`: spatial-reduction summaries, statistics, aggregation, exports |
+| `ro_climate/stations.py` | `Station` catalog, `load_station_series`, `RoClimateStation`, ODP ZIP parser, station cache, CLI |
+| `ro_climate/_stations.json` | Packaged 160-station ODP catalog |
 | `ro_climate/archive.py` | Atomic zip archive writer used by exports |
 | `ro_climate/_chunk_cache.py` | Private raw Zarr chunk cache and caching store wrapper |
 | `ro_climate/_reduce.py` | Shared temporal reduction helpers |
@@ -105,7 +108,29 @@ Tests must pass without network access.
 - Bounds outside the grid are clipped with an `RoClimateArea.warnings` entry;
   an `end` beyond the frontier is clamped with a warning.
 - Point series and area summaries are not archived; both are rebuilt from
-  raw Zarr chunks on every request. The only cache is the raw chunk cache.
+  raw Zarr chunks on every request. The only gridded-data cache is the raw
+  chunk cache.
+- `list_stations`, `get_station`, `nearest_stations`, and `nearest_station`
+  search the packaged 160-station ODP catalog offline. `get_station` accepts a
+  WMO identifier, an integer, or a case/accent/punctuation-insensitive name.
+- `load_station_series(station, start=None, end=None, variables=None, ...)`
+  returns `RoClimateStation`. The default start is 1961-01-01 and the default
+  end is today. Variables accept public names (`max_temp`, `min_temp`,
+  `precipitation`, `mean_temp`, `wind_speed`, `pressure`) and ODP codes (`tx`,
+  `tn`, `r`, `ta`, `ff`, `p`); columns always use public names.
+- Station data use ODP year ZIPs under
+  `https://odp.meteoromania.ro/station_data_series/climate/daily/`. `-999`
+  means missing and becomes `NaN`; `r=-1` is valid trace precipitation, stored
+  as `0.0` for correct sums and exposed through
+  `RoClimateStation.precipitation_trace`. Internal date gaps are reindexed as
+  `NaN` days.
+- Station archives are cached under `<cache root>/stations/<wmo>/<year>.zip`.
+  Past years are immutable; the current year has a one-hour TTL
+  (`RO_CLIMATE_STATION_CACHE_TTL`). A stale archive is used with a warning if a
+  download fails. `clear_station_cache()` removes the station cache.
+- `RoClimateStation` mirrors the point reduction, aggregation, index, and
+  export API. `.tmean` uses `mean_temp` (`ta`) when loaded, otherwise
+  `(max_temp + min_temp) / 2`.
 - The raw chunk cache is enabled by default and lives under
   `<cache root>/chunks/<store digest>/`, keyed by store/variable/time/y/x.
   Its limit defaults to 20 GB, overridable with `chunk_cache_max_mb` or
@@ -131,9 +156,15 @@ Tests must pass without network access.
   `https://stac.eocube.ro/collections/anm-daily-grids/items/anm-daily-grids-open-v1`
 - Variables: `max_temp` (°C), `min_temp` (°C), `precipitation` (mm)
 - Grid: 0.01° cells; x centres 20.135°E–29.845°E; y centres 48.355°N–43.535°N
+- Station archive: `https://odp.meteoromania.ro/station_data_series/climate/daily/`
+- Station year ZIP:
+  `.../0-20000-0-<wmo>/0-20000-0-<wmo>_<year>.zip`, containing 12 monthly CSVs
+  with 12 preamble lines and header `wsi,an,luna,zi,ff,p,r,ta,tn,tx`
+- Station catalog: 160 ODP stations in `ro_climate/_stations.json`
 - Licence: CC BY 4.0. Attribution: Administrația Națională de Meteorologie
   (MeteoRomania), via data.gov.ro; cube assembly and hosting by West University
-  of Timișoara (ROCS / EOCube.RO).
+  of Timișoara (ROCS / EOCube.RO). Station data via the ANM Open Data Portal
+  (ODP).
 
 ## Testing rules
 
@@ -147,6 +178,9 @@ Tests must pass without network access.
   caching store wrapper.
 - The store tests monkeypatch `ro_climate._store.time.sleep`; keep retry tests
   fast and deterministic.
+- Station tests use synthetic ODP year ZIPs (one CSV per month) and a fake
+  HTTP session. Cover sentinel handling, cache reuse, stale-on-error fallback,
+  missing-year markers, catalog lookup, and the CLI.
 - Do not replace tests with live downloads. Live smoke tests are optional and
   manual only.
 
@@ -192,3 +226,9 @@ its attribution in exports and derived products.
 - Keep chunk-cache file names (`<time>.<y>.<x>` bucketed by `time // 1000`) and
   `ChunkCache.invalidate` aligned.
 - Keep the distinction: `ro_climate` is the library; `ANM` is the dataset.
+- Do not treat ODP `r=-1` as missing; it is trace precipitation. Only `-999`
+  (and blank fields) are missing. Store trace as `0.0` so additive reductions
+  stay correct, and keep the `precipitation_trace` mask aligned with the data.
+- Keep station columns on public names even when callers pass ODP codes.
+- Do not replace the packaged station catalog with a live WFS/ODP query at
+  import or call time; catalog lookups must stay offline.

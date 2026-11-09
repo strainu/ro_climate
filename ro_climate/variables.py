@@ -23,6 +23,9 @@ MIN_TEMP = Variable("min_temp", "°C", "daily minimum temperature")
 PRECIPITATION = Variable(
     "precipitation", "mm", "daily precipitation", additive=True
 )
+MEAN_TEMP = Variable("mean_temp", "°C", "daily mean temperature")
+WIND_SPEED = Variable("wind_speed", "m/s", "daily mean wind speed")
+PRESSURE = Variable("pressure", "hPa", "daily mean sea-level pressure")
 
 VARIABLES: dict[str, Variable] = {
     MAX_TEMP.name: MAX_TEMP,
@@ -36,10 +39,50 @@ DEFAULT_VARIABLES: tuple[str, ...] = (
     PRECIPITATION.name,
 )
 
+STATION_VARIABLES: dict[str, Variable] = {
+    MAX_TEMP.name: MAX_TEMP,
+    MIN_TEMP.name: MIN_TEMP,
+    PRECIPITATION.name: PRECIPITATION,
+    MEAN_TEMP.name: MEAN_TEMP,
+    WIND_SPEED.name: WIND_SPEED,
+    PRESSURE.name: PRESSURE,
+}
+
+DEFAULT_STATION_VARIABLES: tuple[str, ...] = (
+    MAX_TEMP.name,
+    MIN_TEMP.name,
+    PRECIPITATION.name,
+)
+
+# ODP daily CSV column names mapped to the public library names.
+STATION_COLUMNS: dict[str, str] = {
+    "tx": MAX_TEMP.name,
+    "tn": MIN_TEMP.name,
+    "r": PRECIPITATION.name,
+    "ta": MEAN_TEMP.name,
+    "ff": WIND_SPEED.name,
+    "p": PRESSURE.name,
+}
+
+STATION_SOURCE_COLUMNS: dict[str, str] = {
+    public: source for source, public in STATION_COLUMNS.items()
+}
+
+STATION_ALIASES: dict[str, str] = {
+    **{name: name for name in STATION_VARIABLES},
+    **STATION_COLUMNS,
+}
+
 ATTRIBUTION = (
     "Data © Administrația Națională de Meteorologie (MeteoRomania), "
     "CC BY 4.0, via data.gov.ro; cube assembly and hosting by "
     "West University of Timișoara (ROCS / EOCube.RO)."
+)
+
+STATION_ATTRIBUTION = (
+    "Data © Administrația Națională de Meteorologie (MeteoRomania), "
+    "CC BY 4.0, via the ANM Open Data Portal (ODP), "
+    "https://odp.meteoromania.ro/."
 )
 
 
@@ -70,4 +113,40 @@ def resolve_variables(
             continue
         seen.add(name)
         out.append(VARIABLES[name])
+    return tuple(out)
+
+
+def resolve_station_variables(
+    variables: Iterable[str] | str | None,
+) -> tuple[Variable, ...]:
+    """Return validated station :class:`Variable` objects.
+
+    Both public names (``max_temp``) and ODP source codes (``tx``) are
+    accepted. Duplicates are removed while preserving the requested order.
+    """
+
+    if variables is None:
+        names: tuple[str, ...] = DEFAULT_STATION_VARIABLES
+    elif isinstance(variables, str):
+        names = (variables,)
+    else:
+        names = tuple(variables)
+
+    if not names:
+        raise ValueError("at least one variable must be selected")
+
+    seen: set[str] = set()
+    out: list[Variable] = []
+    for name in names:
+        key = str(name).strip().lower()
+        public = STATION_ALIASES.get(key)
+        if public is None:
+            raise UnknownVariableError(
+                f"unknown station variable {name!r}; expected one of "
+                f"{sorted(set(STATION_ALIASES))}"
+            )
+        if public in seen:
+            continue
+        seen.add(public)
+        out.append(STATION_VARIABLES[public])
     return tuple(out)

@@ -62,7 +62,10 @@ def write_archive(
                 "=====================================\n\n"
                 + str(metadata.get("attribution", ATTRIBUTION))
                 + "\n\n"
-                + str(metadata.get("store_url", ""))
+                + str(
+                    metadata.get("source_url")
+                    or metadata.get("store_url", "")
+                )
                 + "\n",
             )
         os.replace(tmp, path)

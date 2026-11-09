@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ro-climate"
 dynamic = ["version"]
-description = "Romanian daily gridded climate data from ANM"
+description = "Romanian daily gridded and station climate data from ANM"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -25,6 +25,9 @@ keywords = [
     "gridded-data",
     "temperature",
     "precipitation",
+    "stations",
+    "observations",
+    "odp",
     "zarr",
 ]
 classifiers = [
@@ -70,7 +73,7 @@ version = { attr = "ro_climate.__version__" }
 include = ["ro_climate*"]
 
 [tool.setuptools.package-data]
-ro_climate = ["py.typed"]
+ro_climate = ["py.typed", "_stations.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
